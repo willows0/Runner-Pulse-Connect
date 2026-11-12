@@ -1,0 +1,12 @@
+RUNNER PULSE CONNECT - PROVA HEALTH CONNECT
+1. Crea un NUOVO repository GitHub (non sostituire il sito Runner Pulse Web).
+2. Carica il contenuto di questo ZIP nella radice del nuovo repository.
+3. Apri Actions > Compila Runner Pulse Connect APK > Run workflow.
+4. Al termine, scarica l'artifact Runner-Pulse-Connect-APK.
+5. Estrai app-debug.apk e installalo sul telefono Android.
+6. Apri l'app, autorizza Health Connect e premi Verifica dati reali.
+
+ATTENZIONE: questa prima versione verifica i dati SOLO sul telefono.
+Non invia dati a Firestore, non effettua accesso Google e non cambia Garmin.
+Non inserire chiavi o credenziali nel progetto.
+L'APK di debug e' destinato ai test personali, non alla pubblicazione.
