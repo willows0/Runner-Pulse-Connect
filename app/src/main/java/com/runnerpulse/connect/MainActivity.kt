@@ -63,7 +63,11 @@ class MainActivity : ComponentActivity() {
         }
         addButton("AUTORIZZA HEALTH CONNECT") {
             if (client == null) status.text = "Health Connect non disponibile."
-            else permissionRequest.launch(permissions)
+            else try {
+                permissionRequest.launch(permissions)
+            } catch (e: Exception) {
+                status.text = "Impossibile aprire autorizzazioni: ${e.message ?: e.javaClass.simpleName}"
+            }
         }
         addButton("LEGGI DATI REALI") { readData() }
         addButton("APRI RUNNER PULSE WEB") {
