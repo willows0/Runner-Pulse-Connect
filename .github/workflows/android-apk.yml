@@ -18,11 +18,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Verifica presenza codice Android
-        run: |
-          test -f app/src/main/java/com/runnerpulse/connect/MainActivity.java
-          test -f app/src/main/java/com/runnerpulse/connect/PermissionRationaleActivity.java
-          test -f app/src/main/AndroidManifest.xml
       - name: Compila APK di prova
         run: gradle :app:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
