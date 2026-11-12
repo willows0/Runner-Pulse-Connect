@@ -38,6 +38,29 @@ class MainActivity : ComponentActivity() {
         status.text = "Autorizzazioni concesse: ${granted.size} su 4. Premi LEGGI DATI REALI."
     }
 
+    private fun isAuthorizeLink(intent: Intent?): Boolean =
+        intent?.action == Intent.ACTION_VIEW &&
+        intent.data?.scheme == "runnerpulseconnect" &&
+        intent.data?.host == "authorize"
+
+    private fun openPermissionScreen() {
+        if (client == null) {
+            status.text = "Health Connect non disponibile."
+            return
+        }
+        try {
+            permissionRequest.launch(permissions)
+        } catch (e: Exception) {
+            status.text = "Impossibile aprire autorizzazioni: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (isAuthorizeLink(intent)) openPermissionScreen()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val panel = LinearLayout(this).apply {
@@ -62,12 +85,7 @@ class MainActivity : ComponentActivity() {
             panel.addView(Button(this).apply { text = label; setOnClickListener { action() } })
         }
         addButton("AUTORIZZA HEALTH CONNECT") {
-            if (client == null) status.text = "Health Connect non disponibile."
-            else try {
-                permissionRequest.launch(permissions)
-            } catch (e: Exception) {
-                status.text = "Impossibile aprire autorizzazioni: ${e.message ?: e.javaClass.simpleName}"
-            }
+            openPermissionScreen()
         }
         addButton("LEGGI DATI REALI") { readData() }
         addButton("APRI RUNNER PULSE WEB") {
@@ -86,6 +104,10 @@ class MainActivity : ComponentActivity() {
             }
         } catch (e: Exception) {
             status.text = "Errore inizializzazione: ${e.message ?: e.javaClass.simpleName}"
+        }
+        if (isAuthorizeLink(intent)) {
+            // Defer until activity is fully visible and permission launcher is ready.
+            status.post { openPermissionScreen() }
         }
     }
 
