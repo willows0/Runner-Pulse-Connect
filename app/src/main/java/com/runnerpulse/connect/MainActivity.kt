@@ -32,10 +32,45 @@ class MainActivity : ComponentActivity() {
         HealthPermission.getReadPermission(HeartRateRecord::class),
         HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     )
+    private var webOpened = false
+
+    private fun openWeb() {
+        if (webOpened) return
+        webOpened = true
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://runner-pulse-web.onrender.com/")))
+        } catch (e: Exception) {
+            webOpened = false
+            status.text = "Impossibile aprire Runner Pulse Web: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    private fun checkPermissionsAndContinue() {
+        val health = client ?: return
+        lifecycleScope.launch {
+            try {
+                val granted = health.permissionController.getGrantedPermissions()
+                if (granted.containsAll(permissions)) {
+                    status.text = "Autorizzazioni concesse: 4 su 4. Apertura del sito…"
+                    openWeb()
+                } else {
+                    openPermissionScreen()
+                }
+            } catch (e: Exception) {
+                status.text = "Verifica autorizzazioni non riuscita: ${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+    }
+
     private val permissionRequest = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
-        status.text = "Autorizzazioni concesse: ${granted.size} su 4. Premi LEGGI DATI REALI."
+        if (granted.containsAll(permissions)) {
+            status.text = "Autorizzazioni concesse: 4 su 4. Apertura del sito…"
+            openWeb()
+        } else {
+            status.text = "Autorizzazioni concesse: ${granted.intersect(permissions).size} su 4. Completa le autorizzazioni per continuare."
+        }
     }
 
     private fun isAuthorizeLink(intent: Intent?): Boolean =
@@ -58,7 +93,8 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (isAuthorizeLink(intent)) openPermissionScreen()
+        webOpened = false
+        if (isAuthorizeLink(intent)) checkPermissionsAndContinue()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,9 +124,7 @@ class MainActivity : ComponentActivity() {
             openPermissionScreen()
         }
         addButton("LEGGI DATI REALI") { readData() }
-        addButton("APRI RUNNER PULSE WEB") {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://runner-pulse-web.onrender.com/")))
-        }
+        addButton("APRI RUNNER PULSE WEB") { openWeb() }
         setContentView(panel)
         try {
             when (HealthConnectClient.getSdkStatus(this, "com.google.android.apps.healthdata")) {
@@ -105,9 +139,26 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             status.text = "Errore inizializzazione: ${e.message ?: e.javaClass.simpleName}"
         }
-        if (isAuthorizeLink(intent)) {
-            // Defer until activity is fully visible and permission launcher is ready.
-            status.post { openPermissionScreen() }
+        // Se tutti i permessi sono già concessi, il sito si apre direttamente.
+        // In caso contrario, un deep link dal sito apre la richiesta di autorizzazione.
+        status.post {
+            val health = client
+            if (health != null) {
+                lifecycleScope.launch {
+                    try {
+                        val granted = health.permissionController.getGrantedPermissions()
+                        if (granted.containsAll(permissions)) {
+                            openWeb()
+                        } else if (isAuthorizeLink(intent)) {
+                            openPermissionScreen()
+                        } else {
+                            status.text = "Autorizzazioni concesse: ${granted.intersect(permissions).size} su 4. Premi AUTORIZZA HEALTH CONNECT."
+                        }
+                    } catch (e: Exception) {
+                        status.text = "Verifica permessi non riuscita: ${e.message ?: e.javaClass.simpleName}"
+                    }
+                }
+            }
         }
     }
 
