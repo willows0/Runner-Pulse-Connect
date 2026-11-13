@@ -72,14 +72,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openWebAt(query: String) {
-        try {
-            val target = Uri.parse("https://runner-pulse-web.onrender.com/").buildUpon()
-                .encodedQuery(query).fragment("settings").build()
-            openSite(target)
-            finish()
-        } catch (e: Exception) {
-            status.text = "Impossibile tornare al Profilo: ${e.message ?: e.javaClass.simpleName}"
+        val result = query.substringAfter("healthconnect=", "error")
+        val target = Intent(this, WebViewLauncherActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("healthconnect_result", result)
         }
+        startActivity(target)
+        finish()
     }
 
     private fun openWeb() {

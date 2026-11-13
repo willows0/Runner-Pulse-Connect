@@ -92,9 +92,19 @@ public final class WebViewLauncherActivity extends Activity {
                     }
                     return true;
                 }
-                if ("runnerpulseconnect".equalsIgnoreCase(scheme)) {
-                    try { startActivity(new Intent(Intent.ACTION_VIEW, uri).setPackage(getPackageName())); }
-                    catch (Exception e) { showError("Health Connect non disponibile: " + e.getClass().getSimpleName()); }
+                if ("runnerpulseconnect".equalsIgnoreCase(scheme) ||
+                    ("intent".equalsIgnoreCase(scheme) && "authorize".equalsIgnoreCase(uri.getHost()) &&
+                     uri.toString().contains("scheme=runnerpulseconnect"))) {
+                    try {
+                        Intent health = new Intent(WebViewLauncherActivity.this, MainActivity.class);
+                        health.setAction(Intent.ACTION_VIEW);
+                        health.setData(Uri.parse("runnerpulseconnect://authorize"));
+                        startActivity(health);
+                    } catch (Exception e) {
+                        android.widget.Toast.makeText(WebViewLauncherActivity.this,
+                            "Impossibile aprire Health Connect: " + e.getClass().getSimpleName(),
+                            android.widget.Toast.LENGTH_LONG).show();
+                    }
                     return true;
                 }
                 if (!"https".equalsIgnoreCase(scheme)) return true;
@@ -117,10 +127,19 @@ public final class WebViewLauncherActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         receiveLoginCallback(intent);
+        receiveHealthCallback(intent);
     }
     @Override protected void onResume() {
         super.onResume();
         receiveLoginCallback(getIntent());
+        receiveHealthCallback(getIntent());
+    }
+    private void receiveHealthCallback(Intent intent) {
+        if (web == null || intent == null || !intent.hasExtra("healthconnect_result")) return;
+        String result = intent.getStringExtra("healthconnect_result");
+        intent.removeExtra("healthconnect_result");
+        if (result == null || !result.matches("authorized|partial|denied|error|unavailable")) return;
+        web.loadUrl(HOME + "?healthconnect=" + result + "#settings");
     }
     private void receiveLoginCallback(Intent intent) {
         if (web == null || intent == null || intent.getData() == null) return;
