@@ -1,0 +1,47 @@
+name: Runner Pulse - Genera firma Android
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  genera-firma:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Controlla i segreti richiesti
+        env:
+          STORE_PASS: ${{ secrets.RUNNER_PULSE_STORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.RUNNER_PULSE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$STORE_PASS" ] || [ -z "$KEY_PASS" ]; then
+            echo 'Configura prima RUNNER_PULSE_STORE_PASSWORD e RUNNER_PULSE_KEY_PASSWORD in Settings > Secrets and variables > Actions.'
+            exit 1
+          fi
+          if [ "${#STORE_PASS}" -lt 12 ] || [ "${#KEY_PASS}" -lt 12 ]; then
+            echo 'Usa password di almeno 12 caratteri.'
+            exit 1
+          fi
+      - name: Genera la chiave di firma
+        env:
+          STORE_PASS: ${{ secrets.RUNNER_PULSE_STORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.RUNNER_PULSE_KEY_PASSWORD }}
+        run: |
+          set +x
+          keytool -genkeypair -v \
+            -keystore runner-pulse-release.jks \
+            -storetype PKCS12 \
+            -alias runnerpulse \
+            -keyalg RSA -keysize 3072 -validity 10000 \
+            -dname 'CN=Runner Pulse, OU=Android, O=Runner Pulse, C=IT' \
+            -storepass "$STORE_PASS" -keypass "$KEY_PASS"
+          keytool -list -v -keystore runner-pulse-release.jks -alias runnerpulse -storepass "$STORE_PASS" | grep 'SHA256:'
+      - name: Salva chiave privata come artifact temporaneo
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-pulse-keystore-privato
+          path: runner-pulse-release.jks
+          retention-days: 1
+          if-no-files-found: error
