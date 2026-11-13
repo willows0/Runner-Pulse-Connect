@@ -23,15 +23,15 @@
         </activity-alias>
         <!-- Previous fallback remains available internally, but is not the app entry point. -->
         <activity android:name=".SafeLauncherActivity" android:exported="false" android:launchMode="singleTop" />
-        <!-- Stable direct entry point; TWA kept available for later domain verification. -->
-        <activity android:name=".TwaLauncherActivity" android:exported="false">
-            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://runner-pulse-web.onrender.com/"/>
-        </activity>
-        <activity android:name=".DirectLauncherActivity" android:exported="true" android:launchMode="singleTop">
+        <!-- Verified TWA is the app entry point; keep DirectLauncherActivity as a fallback. -->
+        <activity android:name=".TwaLauncherActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://runner-pulse-web.onrender.com/"/>
+        </activity>
+        <activity android:name=".DirectLauncherActivity" android:exported="false" android:launchMode="singleTop">
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://runner-pulse-web.onrender.com/"/>
         </activity>
         <!-- Native Health Connect authorization is invoked only via the existing site deep link. -->
