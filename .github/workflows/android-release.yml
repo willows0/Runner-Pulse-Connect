@@ -37,10 +37,13 @@ jobs:
         run: gradle :app:assembleRelease --no-daemon
       - name: Verifica firma APK e salva impronta SHA-256
         run: |
+          set -euo pipefail
           APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
           "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk | tee "$RUNNER_TEMP/firma-apk.txt"
-          grep 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/firma-apk.txt" | sed 's/^.*digest: //' > "$RUNNER_TEMP/sha256.txt"
-          test -s "$RUNNER_TEMP/sha256.txt"
+          # apksigner moderno scrive "V2 Signer: certificate SHA-256 digest:",
+          # non "Signer #1 certificate SHA-256 digest:".
+          awk -F'digest: ' '/certificate SHA-256 digest:/ {print $2; exit}' "$RUNNER_TEMP/firma-apk.txt" > "$RUNNER_TEMP/sha256.txt"
+          grep -Eq '^[[:xdigit:]]{64}$' "$RUNNER_TEMP/sha256.txt" || { echo 'Impronta SHA-256 del certificato non trovata'; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: Runner-Pulse-APK-Firmato-e-SHA256
