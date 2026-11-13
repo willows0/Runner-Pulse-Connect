@@ -95,21 +95,48 @@ class MainActivity : ComponentActivity() {
         intent.data?.scheme == "runnerpulseconnect" &&
         intent.data?.host in setOf("authorize", "revoke", "status")
 
-    private fun revokeHealthPermissions() {
-        val health = client ?: run { openWebAt("healthconnect=unavailable"); return }
-        lifecycleScope.launch {
-            try {
-                health.permissionController.revokeAllPermissions()
+    // Health Connect manages grants persistently. Do not call revokeAllPermissions():
+    // on some Android versions it may terminate this app's process.
+    private var waitingForHealthSettings = false
+    private var healthSettingsOpened = false
+
+    private fun openHealthPermissionSettings() {
+        try {
+            val settingsIntent = Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS")
+            if (settingsIntent.resolveActivity(packageManager) != null) {
+                waitingForHealthSettings = true
+                healthSettingsOpened = false
+                startActivity(settingsIntent)
+            } else {
+                // Fallback: Android app details allow access to the Health Connect permissions entry.
+                waitingForHealthSettings = true
+                healthSettingsOpened = false
+                startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:$packageName")))
+            }
+        } catch (e: Exception) {
+            waitingForHealthSettings = false
+            openWebAt("healthconnect=error")
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (waitingForHealthSettings) {
+            if (!healthSettingsOpened) {
+                healthSettingsOpened = true
+            } else {
+                waitingForHealthSettings = false
+                healthSettingsOpened = false
+                // Read actual permissions when returning from system settings.
                 returnToProfile()
-            } catch (e: Exception) {
-                openWebAt("healthconnect=error")
             }
         }
     }
 
     private fun handleHealthAction(intent: Intent?) {
         when (intent?.data?.host) {
-            "revoke" -> revokeHealthPermissions()
+            "revoke" -> openHealthPermissionSettings()
             "status" -> returnToProfile()
             "authorize" -> openPermissionScreen()
             else -> openWeb()
