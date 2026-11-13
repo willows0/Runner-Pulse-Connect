@@ -21,15 +21,14 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
-        <!-- Native fail-safe launcher: keeps the app open if the browser/TWA cannot launch. -->
-        <activity android:name=".SafeLauncherActivity" android:exported="true" android:launchMode="singleTop">
+        <!-- Previous fallback remains available internally, but is not the app entry point. -->
+        <activity android:name=".SafeLauncherActivity" android:exported="false" android:launchMode="singleTop" />
+        <!-- Main entry point: launch the web application directly as a TWA. -->
+        <activity android:name=".TwaLauncherActivity" android:exported="false" android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
-        <!-- Optional TWA launcher. Kept available from the in-app fallback screen. -->
-        <activity android:name=".TwaLauncherActivity" android:exported="false" android:launchMode="singleTask">
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://runner-pulse-web.onrender.com/"/>
         </activity>
         <!-- Native Health Connect authorization is invoked only via the existing site deep link. -->
