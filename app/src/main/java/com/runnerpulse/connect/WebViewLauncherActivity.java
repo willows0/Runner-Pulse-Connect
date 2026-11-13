@@ -5,6 +5,9 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.graphics.Typeface;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
@@ -23,18 +26,39 @@ public final class WebViewLauncherActivity extends Activity {
     private WebView web;
     private ProgressBar progress;
     private TextView error;
+    private String pendingState;
+    private FrameLayout splash;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private int splashChecks;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        if (state != null) pendingState=state.getString("mobileLoginState");
         getWindow().setStatusBarColor(Color.rgb(14, 25, 48));
         getWindow().setNavigationBarColor(Color.rgb(14, 25, 48));
         FrameLayout frame = new FrameLayout(this);
         web = new WebView(this);
         web.setBackgroundColor(Color.rgb(14, 25, 48));
         frame.addView(web, new FrameLayout.LayoutParams(-1, -1));
-        progress = new ProgressBar(this);
-        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(110, 110, android.view.Gravity.CENTER);
-        frame.addView(progress, p);
+        splash = new FrameLayout(this);
+        splash.setBackgroundColor(Color.rgb(244, 113, 28));
+        frame.addView(splash, new FrameLayout.LayoutParams(-1, -1));
+        TextView splashTitle = new TextView(this);
+        splashTitle.setText("RUNNER PULSE");
+        splashTitle.setTextColor(Color.WHITE);
+        splashTitle.setTextSize(30);
+        splashTitle.setTypeface(null, Typeface.BOLD);
+        splashTitle.setGravity(android.view.Gravity.CENTER);
+        FrameLayout.LayoutParams titleParams=new FrameLayout.LayoutParams(-1, 100, android.view.Gravity.CENTER);
+        titleParams.bottomMargin=160;
+        splash.addView(splashTitle,titleParams);
+        progress = new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+        progress.setIndeterminate(true);
+        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(Color.WHITE));
+        progress.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Color.WHITE));
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-1, 12, android.view.Gravity.CENTER);
+        p.leftMargin=70; p.rightMargin=70; p.topMargin=80;
+        splash.addView(progress, p);
         error = new TextView(this);
         error.setTextColor(Color.WHITE);
         error.setTextSize(16);
@@ -52,11 +76,22 @@ public final class WebViewLauncherActivity extends Activity {
         settings.setAllowContentAccess(false);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
+        settings.setUserAgentString(settings.getUserAgentString() + " RunnerPulseAndroidWebView/1");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String scheme = uri.getScheme();
+                if ("runnerpulseauth".equalsIgnoreCase(scheme) && "start".equalsIgnoreCase(uri.getHost())) {
+                    String state = uri.getQueryParameter("state");
+                    if (state != null && state.matches("[A-Za-z0-9_-]{32,128}")) {
+                        pendingState = state;
+                        Uri browserUrl = Uri.parse("https://runner-pulse-web.onrender.com/mobile-login.html?state=" + Uri.encode(state));
+                        try { new CustomTabsIntent.Builder().build().launchUrl(WebViewLauncherActivity.this, browserUrl); }
+                        catch (Exception e) { startActivity(new Intent(Intent.ACTION_VIEW, browserUrl)); }
+                    }
+                    return true;
+                }
                 if ("runnerpulseconnect".equalsIgnoreCase(scheme)) {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, uri).setPackage(getPackageName())); }
                     catch (Exception e) { showError("Health Connect non disponibile: " + e.getClass().getSimpleName()); }
@@ -70,7 +105,7 @@ public final class WebViewLauncherActivity extends Activity {
                 catch (Exception e) { startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
                 return true;
             }
-            @Override public void onPageFinished(WebView view, String url) { progress.setVisibility(View.GONE); }
+            @Override public void onPageFinished(WebView view, String url) { checkAppReady(); }
             @Override public void onReceivedError(WebView view, android.webkit.WebResourceRequest req, android.webkit.WebResourceError err) {
                 if (req.isForMainFrame()) showError("Impossibile caricare Runner Pulse. Controlla la connessione e riapri l'app.");
             }
@@ -78,8 +113,36 @@ public final class WebViewLauncherActivity extends Activity {
         if (state != null) web.restoreState(state);
         else web.loadUrl(HOME);
     }
-    private void showError(String message) { progress.setVisibility(View.GONE); error.setText(message); error.setVisibility(View.VISIBLE); }
-    @Override protected void onSaveInstanceState(Bundle out) { web.saveState(out); super.onSaveInstanceState(out); }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        receiveLoginCallback(intent);
+    }
+    @Override protected void onResume() {
+        super.onResume();
+        receiveLoginCallback(getIntent());
+    }
+    private void receiveLoginCallback(Intent intent) {
+        if (web == null || intent == null || intent.getData() == null) return;
+        Uri uri=intent.getData();
+        if (!"runnerpulseauth".equalsIgnoreCase(uri.getScheme()) || !"callback".equalsIgnoreCase(uri.getHost())) return;
+        String state=uri.getQueryParameter("state"),code=uri.getQueryParameter("code");
+        if (state==null || !state.equals(pendingState) || code==null || !code.matches("[A-Za-z0-9_-]{32,128}")) return;
+        pendingState=null;
+        intent.setData(null);
+        String js="window.runnerPulseCompleteNativeLogin("+org.json.JSONObject.quote(state)+","+org.json.JSONObject.quote(code)+")";
+        web.post(()->web.evaluateJavascript(js,null));
+    }
+    private void checkAppReady() {
+        if (web == null || splash == null || splash.getVisibility() != View.VISIBLE) return;
+        web.evaluateJavascript("Boolean(document.getElementById('rp-login-gate'))", value -> {
+            if ("true".equals(value)) { splash.setVisibility(View.GONE); return; }
+            if (++splashChecks < 150) handler.postDelayed(this::checkAppReady, 800);
+            else showError("Runner Pulse impiega troppo tempo a caricarsi. Riapri l'app.");
+        });
+    }
+    private void showError(String message) { if(splash!=null)splash.setVisibility(View.GONE); progress.setVisibility(View.GONE); error.setText(message); error.setVisibility(View.VISIBLE); }
+    @Override protected void onSaveInstanceState(Bundle out) { web.saveState(out); out.putString("mobileLoginState",pendingState); super.onSaveInstanceState(out); }
     @Override public void onBackPressed() { if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed(); }
     @Override protected void onDestroy() { if (web != null) { web.destroy(); web = null; } super.onDestroy(); }
 }
