@@ -96,9 +96,14 @@ public final class WebViewLauncherActivity extends Activity {
                     ("intent".equalsIgnoreCase(scheme) && "authorize".equalsIgnoreCase(uri.getHost()) &&
                      uri.toString().contains("scheme=runnerpulseconnect"))) {
                     try {
+                        String action = "authorize";
+                        if ("runnerpulseconnect".equalsIgnoreCase(scheme)) {
+                            String hostAction = uri.getHost();
+                            if ("revoke".equalsIgnoreCase(hostAction) || "status".equalsIgnoreCase(hostAction)) action = hostAction;
+                        }
                         Intent health = new Intent(WebViewLauncherActivity.this, MainActivity.class);
                         health.setAction(Intent.ACTION_VIEW);
-                        health.setData(Uri.parse("runnerpulseconnect://authorize"));
+                        health.setData(Uri.parse("runnerpulseconnect://" + action));
                         startActivity(health);
                     } catch (Exception e) {
                         android.widget.Toast.makeText(WebViewLauncherActivity.this,

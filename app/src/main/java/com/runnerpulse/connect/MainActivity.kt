@@ -93,7 +93,28 @@ class MainActivity : ComponentActivity() {
     private fun isAuthorizeLink(intent: Intent?): Boolean =
         intent?.action == Intent.ACTION_VIEW &&
         intent.data?.scheme == "runnerpulseconnect" &&
-        intent.data?.host == "authorize"
+        intent.data?.host in setOf("authorize", "revoke", "status")
+
+    private fun revokeHealthPermissions() {
+        val health = client ?: run { openWebAt("healthconnect=unavailable"); return }
+        lifecycleScope.launch {
+            try {
+                health.permissionController.revokeAllPermissions()
+                returnToProfile()
+            } catch (e: Exception) {
+                openWebAt("healthconnect=error")
+            }
+        }
+    }
+
+    private fun handleHealthAction(intent: Intent?) {
+        when (intent?.data?.host) {
+            "revoke" -> revokeHealthPermissions()
+            "status" -> returnToProfile()
+            "authorize" -> openPermissionScreen()
+            else -> openWeb()
+        }
+    }
 
     private fun openPermissionScreen() {
         if (client == null) {
@@ -110,7 +131,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (isAuthorizeLink(intent)) openPermissionScreen() else openWeb()
+        if (isAuthorizeLink(intent)) handleHealthAction(intent) else openWeb()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -159,7 +180,7 @@ class MainActivity : ComponentActivity() {
         }
         if (isAuthorizeLink(intent)) {
             // Solo il pulsante Health Connect del sito richiede i permessi.
-            status.post { openPermissionScreen() }
+            status.post { handleHealthAction(intent) }
         } else {
             // L’icona dell’app apre sempre il sito, anche senza permessi.
             status.post { openWeb() }
