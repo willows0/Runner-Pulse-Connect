@@ -32,7 +32,8 @@ jobs:
           RP_KEYSTORE_PATH: ${{ runner.temp }}/runnerpulse-release.jks
           RP_KEYSTORE_PASSWORD: ${{ secrets.RUNNER_PULSE_STORE_PASSWORD }}
           RP_KEY_ALIAS: runnerpulse
-          RP_KEY_PASSWORD: ${{ secrets.RUNNER_PULSE_KEY_PASSWORD }}
+          # Il keystore è PKCS12: keytool usa la stessa password per store e chiave.
+          RP_KEY_PASSWORD: ${{ secrets.RUNNER_PULSE_STORE_PASSWORD }}
         run: gradle :app:assembleRelease --no-daemon
       - name: Verifica firma APK e salva impronta SHA-256
         run: |
