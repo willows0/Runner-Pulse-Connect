@@ -3,6 +3,7 @@ package com.runnerpulse.connect
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
@@ -60,11 +61,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Chrome Custom Tabs mantiene l’accesso Google del browser.
+    // Una WebView tradizionale non è compatibile con alcuni flussi Google OAuth.
+    private fun openSite(uri: Uri) {
+        try {
+            CustomTabsIntent.Builder().setShowTitle(false).build().launchUrl(this, uri)
+        } catch (e: Exception) {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+        }
+    }
+
     private fun openWebAt(query: String) {
         try {
             val target = Uri.parse("https://runner-pulse-web.onrender.com/").buildUpon()
                 .encodedQuery(query).fragment("settings").build()
-            startActivity(Intent(Intent.ACTION_VIEW, target).addCategory(Intent.CATEGORY_BROWSABLE))
+            openSite(target)
             finish()
         } catch (e: Exception) {
             status.text = "Impossibile tornare al Profilo: ${e.message ?: e.javaClass.simpleName}"
@@ -73,7 +84,7 @@ class MainActivity : ComponentActivity() {
 
     private fun openWeb() {
         try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://runner-pulse-web.onrender.com/")).addCategory(Intent.CATEGORY_BROWSABLE))
+            openSite(Uri.parse("https://runner-pulse-web.onrender.com/"))
             finish()
         } catch (e: Exception) {
             status.text = "Impossibile aprire il sito: ${e.message ?: e.javaClass.simpleName}"
@@ -111,7 +122,7 @@ class MainActivity : ComponentActivity() {
             setBackgroundColor(Color.rgb(16, 35, 58))
         }
         val title = TextView(this).apply {
-            text = "Runner Pulse Connect"
+            text = "Runner Pulse"
             textSize = 26f
             setTextColor(Color.WHITE)
         }
