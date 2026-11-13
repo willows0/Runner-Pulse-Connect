@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.health.READ_STEPS"/>
     <uses-permission android:name="android.permission.health.READ_SLEEP"/>
     <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
@@ -22,16 +23,18 @@
             </intent-filter>
         </activity-alias>
         <!-- Previous fallback remains available internally, but is not the app entry point. -->
-        <activity android:name=".SafeLauncherActivity" android:exported="true" android:launchMode="singleTop">
+        <activity android:name=".SafeLauncherActivity" android:exported="false" android:launchMode="singleTop" />
+        <!-- Verified TWA is the app entry point; keep DirectLauncherActivity as a fallback. -->
+        <activity android:name=".DiagnosticLauncherActivity" android:exported="false" android:launchMode="singleTop" />
+        <activity android:name=".WebViewLauncherActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- Verified TWA is the app entry point; keep DirectLauncherActivity as a fallback. -->
-        <activity android:name=".DiagnosticLauncherActivity" android:exported="false" android:launchMode="singleTop" />
-        <activity android:name=".TwaLauncherActivity" android:exported="false" android:launchMode="singleTop">
+        <activity android:name=".TwaLauncherActivity" android:exported="true" android:launchMode="singleTop">
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://runner-pulse-web.onrender.com/"/>
+            
         </activity>
         <activity android:name=".DirectLauncherActivity" android:exported="false" android:launchMode="singleTop">
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://runner-pulse-web.onrender.com/"/>
