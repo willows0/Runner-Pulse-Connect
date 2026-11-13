@@ -24,7 +24,7 @@
         <!-- Previous fallback remains available internally, but is not the app entry point. -->
         <activity android:name=".SafeLauncherActivity" android:exported="false" android:launchMode="singleTop" />
         <!-- Main entry point: launch the web application directly as a TWA. -->
-        <activity android:name=".TwaLauncherActivity" android:exported="false" android:launchMode="singleTask">
+        <activity android:name=".TwaLauncherActivity" android:exported="true" android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
