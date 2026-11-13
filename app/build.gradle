@@ -8,6 +8,10 @@ android {
 }
 dependencies {
  implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2'
+ // Mantiene AndroidX Browser compatibile con compileSdk 35 e AGP 8.7.3.
+ implementation('androidx.browser:browser') {
+  version { strictly '1.8.0' }
+ }
  implementation 'androidx.activity:activity-ktx:1.9.3'
  implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
  implementation 'androidx.health.connect:connect-client:1.1.0-alpha11'
