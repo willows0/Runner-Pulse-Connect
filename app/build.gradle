@@ -7,8 +7,8 @@ android {
         applicationId 'com.runnerpulse.connect'
         minSdk 28
         targetSdk 35
-        versionCode 12
-        versionName '1.2-avvio-sicuro'
+        versionCode 13
+        versionName '1.3-avvio-diretto'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = '17' }
