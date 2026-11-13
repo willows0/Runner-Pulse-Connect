@@ -35,8 +35,40 @@ class MainActivity : ComponentActivity() {
     private val permissionRequest = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
-        status.text = "Autorizzazioni concesse: ${granted.size} su 4. Apertura Runner Pulse Web…"
-        openWeb()
+        // La risposta del sistema e' verificata di nuovo prima di tornare al sito.
+        returnToProfile()
+    }
+
+    private fun returnToProfile() {
+        val health = client
+        if (health == null) {
+            openWebAt("healthconnect=unavailable")
+            return
+        }
+        lifecycleScope.launch {
+            try {
+                val granted = health.permissionController.getGrantedPermissions()
+                val result = when {
+                    granted.containsAll(permissions) -> "authorized"
+                    granted.isNotEmpty() -> "partial"
+                    else -> "denied"
+                }
+                openWebAt("healthconnect=$result")
+            } catch (e: Exception) {
+                openWebAt("healthconnect=error")
+            }
+        }
+    }
+
+    private fun openWebAt(query: String) {
+        try {
+            val target = Uri.parse("https://runner-pulse-web.onrender.com/").buildUpon()
+                .encodedQuery(query).fragment("settings").build()
+            startActivity(Intent(Intent.ACTION_VIEW, target).addCategory(Intent.CATEGORY_BROWSABLE))
+            finish()
+        } catch (e: Exception) {
+            status.text = "Impossibile tornare al Profilo: ${e.message ?: e.javaClass.simpleName}"
+        }
     }
 
     private fun openWeb() {
