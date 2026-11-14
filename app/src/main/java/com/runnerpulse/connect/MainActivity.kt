@@ -19,10 +19,13 @@ import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -140,6 +143,7 @@ class MainActivity : ComponentActivity() {
         when (intent?.data?.host) {
             "revoke" -> openHealthPermissionSettings()
             "sync" -> syncExercises()
+            "steps" -> syncSteps()
             "status" -> returnToProfile()
             "authorize" -> openPermissionScreen()
             else -> openWeb()
@@ -189,6 +193,50 @@ class MainActivity : ComponentActivity() {
             // L’icona dell’app apre sempre il sito, anche senza permessi.
             openWeb()
         }
+    }
+
+    // Daily steps are aggregated by Health Connect across sources; never sum raw
+    // Garmin/Fit/HONOR records, which can overlap.
+    private fun syncSteps() {
+        val health = client ?: run {
+            sendStepsResult(JSONObject().put("error", "Health Connect non disponibile")); return
+        }
+        lifecycleScope.launch {
+            try {
+                val granted = health.permissionController.getGrantedPermissions()
+                if (HealthPermission.getReadPermission(StepsRecord::class) !in granted) {
+                    sendStepsResult(JSONObject().put("error", "Permesso Passi non concesso"))
+                    return@launch
+                }
+                val zone = ZoneId.systemDefault()
+                val today = LocalDate.now(zone)
+                val days = JSONArray()
+                for (offset in 6 downTo 0) {
+                    val day = today.minusDays(offset.toLong())
+                    val start = day.atStartOfDay(zone).toInstant()
+                    val end = if (offset == 0) Instant.now() else day.plusDays(1).atStartOfDay(zone).toInstant()
+                    val aggregate = health.aggregate(AggregateRequest(
+                        metrics = setOf(StepsRecord.COUNT_TOTAL),
+                        timeRangeFilter = TimeRangeFilter.between(start, end)
+                    ))
+                    val count = aggregate[StepsRecord.COUNT_TOTAL]
+                    days.put(JSONObject().put("date", day.toString())
+                        .put("steps", if (count == null) JSONObject.NULL else count))
+                }
+                sendStepsResult(JSONObject().put("days", days).put("source", "Health Connect"))
+            } catch (e: Exception) {
+                sendStepsResult(JSONObject().put("error", "Lettura passi non riuscita: " + e.javaClass.simpleName))
+            }
+        }
+    }
+
+    private fun sendStepsResult(result: JSONObject) {
+        val target = Intent(this, WebViewLauncherActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("healthconnect_steps", result.toString())
+        }
+        startActivity(target)
+        finish()
     }
 
     private fun syncExercises() {

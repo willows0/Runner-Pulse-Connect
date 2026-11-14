@@ -89,6 +89,15 @@ public final class WebViewLauncherActivity extends Activity {
                     startActivity(i);
                 });
             }
+            @JavascriptInterface public void requestSteps() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
+                    i.setAction(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse("runnerpulseconnect://steps"));
+                    startActivity(i);
+                });
+            }
             @JavascriptInterface public void requestExerciseSync() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
@@ -121,7 +130,7 @@ public final class WebViewLauncherActivity extends Activity {
                         String action = "authorize";
                         if ("runnerpulseconnect".equalsIgnoreCase(scheme)) {
                             String hostAction = uri.getHost();
-                            if ("revoke".equalsIgnoreCase(hostAction) || "status".equalsIgnoreCase(hostAction) || "sync".equalsIgnoreCase(hostAction)) action = hostAction;
+                            if ("revoke".equalsIgnoreCase(hostAction) || "status".equalsIgnoreCase(hostAction) || "sync".equalsIgnoreCase(hostAction) || "steps".equalsIgnoreCase(hostAction)) action = hostAction;
                         }
                         Intent health = new Intent(WebViewLauncherActivity.this, MainActivity.class);
                         health.setAction(Intent.ACTION_VIEW);
@@ -156,6 +165,7 @@ public final class WebViewLauncherActivity extends Activity {
         receiveLoginCallback(intent);
         receiveHealthCallback(intent);
         receiveHealthSync(intent);
+        receiveHealthSteps(intent);
     }
     @Override protected void onResume() {
         super.onResume();
@@ -170,6 +180,15 @@ public final class WebViewLauncherActivity extends Activity {
         // Aggiorna il pulsante nella pagina corrente senza ricaricare la WebView.
         String js = "window.dispatchEvent(new CustomEvent('runnerpulse:health-permission-status',{detail:{status:"
             + JSONObject.quote(result) + "}}))";
+        web.post(() -> web.evaluateJavascript(js, null));
+    }
+    private void receiveHealthSteps(Intent intent) {
+        if (web == null || intent == null || !intent.hasExtra("healthconnect_steps")) return;
+        String payload = intent.getStringExtra("healthconnect_steps");
+        intent.removeExtra("healthconnect_steps");
+        if (payload == null) return;
+        try { new JSONObject(payload); } catch (Exception e) { return; }
+        String js = "window.dispatchEvent(new CustomEvent('runnerpulse:health-steps',{detail:" + payload + "}))";
         web.post(() -> web.evaluateJavascript(js, null));
     }
     private void receiveHealthSync(Intent intent) {
