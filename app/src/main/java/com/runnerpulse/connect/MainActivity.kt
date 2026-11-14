@@ -8,6 +8,8 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import org.json.JSONObject
+import org.json.JSONArray
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.health.connect.client.HealthConnectClient
@@ -93,7 +95,7 @@ class MainActivity : ComponentActivity() {
     private fun isAuthorizeLink(intent: Intent?): Boolean =
         intent?.action == Intent.ACTION_VIEW &&
         intent.data?.scheme == "runnerpulseconnect" &&
-        intent.data?.host in setOf("authorize", "revoke", "status")
+        intent.data?.host in setOf("authorize", "revoke", "status", "sync")
 
     // Health Connect manages grants persistently. Do not call revokeAllPermissions():
     // on some Android versions it may terminate this app's process.
@@ -137,6 +139,7 @@ class MainActivity : ComponentActivity() {
     private fun handleHealthAction(intent: Intent?) {
         when (intent?.data?.host) {
             "revoke" -> openHealthPermissionSettings()
+            "sync" -> syncExercises()
             "status" -> returnToProfile()
             "authorize" -> openPermissionScreen()
             else -> openWeb()
@@ -186,6 +189,55 @@ class MainActivity : ComponentActivity() {
             // L’icona dell’app apre sempre il sito, anche senza permessi.
             openWeb()
         }
+    }
+
+    private fun syncExercises() {
+        val health = client ?: run { sendExerciseResult(JSONObject().put("error", "Health Connect non disponibile")); return }
+        lifecycleScope.launch {
+            try {
+                val granted = health.permissionController.getGrantedPermissions()
+                if (HealthPermission.getReadPermission(ExerciseSessionRecord::class) !in granted) {
+                    sendExerciseResult(JSONObject().put("error", "Autorizza la lettura degli allenamenti in Health Connect"))
+                    return@launch
+                }
+                val now = Instant.now()
+                val records = JSONArray()
+                var pageToken: String? = null
+                var pages = 0
+                do {
+                    val response = health.readRecords(ReadRecordsRequest(
+                        ExerciseSessionRecord::class,
+                        TimeRangeFilter.between(now.minus(30, ChronoUnit.DAYS), now),
+                        pageSize = 100,
+                        pageToken = pageToken
+                    ))
+                    for (r in response.records) {
+                        if (records.length() >= 300) break
+                        records.put(JSONObject()
+                            .put("id", r.metadata.id)
+                            .put("sourcePackage", r.metadata.dataOrigin.packageName)
+                            .put("start", r.startTime.toEpochMilli())
+                            .put("end", r.endTime.toEpochMilli())
+                            .put("exerciseType", r.exerciseType)
+                            .put("title", r.title ?: ""))
+                    }
+                    pageToken = response.pageToken
+                    pages++
+                } while (pageToken != null && pages < 3 && records.length() < 300)
+                sendExerciseResult(JSONObject().put("records", records))
+            } catch (e: Exception) {
+                sendExerciseResult(JSONObject().put("error", "Lettura Health Connect non riuscita: " + e.javaClass.simpleName))
+            }
+        }
+    }
+
+    private fun sendExerciseResult(result: JSONObject) {
+        val target = Intent(this, WebViewLauncherActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("healthconnect_sync", result.toString())
+        }
+        startActivity(target)
+        finish()
     }
 
     private fun readData() {

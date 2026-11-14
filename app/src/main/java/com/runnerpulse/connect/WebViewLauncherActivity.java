@@ -14,6 +14,8 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.JavascriptInterface;
+import org.json.JSONObject;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
@@ -77,6 +79,17 @@ public final class WebViewLauncherActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         settings.setUserAgentString(settings.getUserAgentString() + " RunnerPulseAndroidWebView/1");
+        web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void requestExerciseSync() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
+                    i.setAction(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse("runnerpulseconnect://sync"));
+                    startActivity(i);
+                });
+            }
+        }, "RunnerPulseHealthNative");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -99,7 +112,7 @@ public final class WebViewLauncherActivity extends Activity {
                         String action = "authorize";
                         if ("runnerpulseconnect".equalsIgnoreCase(scheme)) {
                             String hostAction = uri.getHost();
-                            if ("revoke".equalsIgnoreCase(hostAction) || "status".equalsIgnoreCase(hostAction)) action = hostAction;
+                            if ("revoke".equalsIgnoreCase(hostAction) || "status".equalsIgnoreCase(hostAction) || "sync".equalsIgnoreCase(hostAction)) action = hostAction;
                         }
                         Intent health = new Intent(WebViewLauncherActivity.this, MainActivity.class);
                         health.setAction(Intent.ACTION_VIEW);
@@ -133,6 +146,7 @@ public final class WebViewLauncherActivity extends Activity {
         setIntent(intent);
         receiveLoginCallback(intent);
         receiveHealthCallback(intent);
+        receiveHealthSync(intent);
     }
     @Override protected void onResume() {
         super.onResume();
@@ -145,6 +159,14 @@ public final class WebViewLauncherActivity extends Activity {
         intent.removeExtra("healthconnect_result");
         if (result == null || !result.matches("authorized|partial|denied|error|unavailable")) return;
         web.loadUrl(HOME + "?healthconnect=" + result + "#settings");
+    }
+    private void receiveHealthSync(Intent intent) {
+        if (web == null || intent == null || !intent.hasExtra("healthconnect_sync")) return;
+        String payload = intent.getStringExtra("healthconnect_sync");
+        intent.removeExtra("healthconnect_sync");
+        if (payload == null) return;
+        String js = "window.dispatchEvent(new CustomEvent('runnerpulse:health-sync',{detail:" + payload + "}))";
+        web.post(() -> web.evaluateJavascript(js, null));
     }
     private void receiveLoginCallback(Intent intent) {
         if (web == null || intent == null || intent.getData() == null) return;
