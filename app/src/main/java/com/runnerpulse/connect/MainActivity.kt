@@ -98,7 +98,7 @@ class MainActivity : ComponentActivity() {
     private fun isAuthorizeLink(intent: Intent?): Boolean =
         intent?.action == Intent.ACTION_VIEW &&
         intent.data?.scheme == "runnerpulseconnect" &&
-        intent.data?.host in setOf("authorize", "revoke", "status", "sync")
+        intent.data?.host in setOf("authorize", "revoke", "status", "sync", "steps")
 
     // Health Connect manages grants persistently. Do not call revokeAllPermissions():
     // on some Android versions it may terminate this app's process.

@@ -171,6 +171,8 @@ public final class WebViewLauncherActivity extends Activity {
         super.onResume();
         receiveLoginCallback(getIntent());
         receiveHealthCallback(getIntent());
+        receiveHealthSync(getIntent());
+        receiveHealthSteps(getIntent());
     }
     private void receiveHealthCallback(Intent intent) {
         if (web == null || intent == null || !intent.hasExtra("healthconnect_result")) return;
