@@ -46,7 +46,7 @@
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://runner-pulse-web.onrender.com/"/>
         </activity>
         <!-- Native Health Connect authorization is invoked only via the existing site deep link. -->
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".MainActivity" android:exported="true" android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
