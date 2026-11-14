@@ -163,35 +163,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(28, 42, 28, 28)
-            setBackgroundColor(Color.rgb(16, 35, 58))
-        }
-        val title = TextView(this).apply {
-            text = "Runner Pulse"
-            textSize = 26f
-            setTextColor(Color.WHITE)
-        }
-        panel.addView(title)
-        status = TextView(this).apply {
-            textSize = 17f
-            setTextColor(Color.WHITE)
-            setPadding(0, 32, 0, 24)
-            text = "Verifica Health Connect in corso…"
-        }
-        panel.addView(status)
-        fun addButton(label: String, action: () -> Unit) {
-            panel.addView(Button(this).apply { text = label; setOnClickListener { action() } })
-        }
-        addButton("AUTORIZZA HEALTH CONNECT") {
-            openPermissionScreen()
-        }
-        addButton("LEGGI DATI REALI") { readData() }
-        addButton("APRI RUNNER PULSE WEB") {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://runner-pulse-web.onrender.com/")))
-        }
-        setContentView(panel)
+        // Activity di servizio invisibile: la WebView del Profilo resta sotto.
+        // Non mostrare piu' la vecchia schermata con i tre pulsanti.
+        status = TextView(this)
         try {
             when (HealthConnectClient.getSdkStatus(this, "com.google.android.apps.healthdata")) {
                 HealthConnectClient.SDK_AVAILABLE -> {
@@ -207,10 +181,10 @@ class MainActivity : ComponentActivity() {
         }
         if (isAuthorizeLink(intent)) {
             // Solo il pulsante Health Connect del sito richiede i permessi.
-            status.post { handleHealthAction(intent) }
+            handleHealthAction(intent)
         } else {
             // L’icona dell’app apre sempre il sito, anche senza permessi.
-            status.post { openWeb() }
+            openWeb()
         }
     }
 
