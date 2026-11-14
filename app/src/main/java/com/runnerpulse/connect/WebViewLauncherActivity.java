@@ -80,6 +80,15 @@ public final class WebViewLauncherActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         settings.setUserAgentString(settings.getUserAgentString() + " RunnerPulseAndroidWebView/1");
         web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void requestPermissionStatus() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
+                    i.setAction(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse("runnerpulseconnect://status"));
+                    startActivity(i);
+                });
+            }
             @JavascriptInterface public void requestExerciseSync() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
@@ -158,7 +167,10 @@ public final class WebViewLauncherActivity extends Activity {
         String result = intent.getStringExtra("healthconnect_result");
         intent.removeExtra("healthconnect_result");
         if (result == null || !result.matches("authorized|partial|denied|error|unavailable")) return;
-        web.loadUrl(HOME + "?healthconnect=" + result + "#settings");
+        // Aggiorna il pulsante nella pagina corrente senza ricaricare la WebView.
+        String js = "window.dispatchEvent(new CustomEvent('runnerpulse:health-permission-status',{detail:{status:"
+            + JSONObject.quote(result) + "}}))";
+        web.post(() -> web.evaluateJavascript(js, null));
     }
     private void receiveHealthSync(Intent intent) {
         if (web == null || intent == null || !intent.hasExtra("healthconnect_sync")) return;
