@@ -5,6 +5,11 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
+import android.content.pm.PackageManager;
+import com.google.firebase.messaging.FirebaseMessaging;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import android.os.Handler;
 import android.os.Looper;
 import android.graphics.Typeface;
@@ -32,6 +37,33 @@ public final class WebViewLauncherActivity extends Activity {
     private FrameLayout splash;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private int splashChecks;
+    private static final int PUSH_PERMISSION_REQUEST = 8017;
+    private boolean pushPermissionPending = false;
+    private void emitPushToken(String token, String error) {
+        if (web == null) return;
+        String js = "window.dispatchEvent(new CustomEvent('runnerpulse:native-push-token',{detail:{token:" + JSONObject.quote(token == null ? "" : token) + ",error:" + JSONObject.quote(error == null ? "" : error) + "}}))";
+        web.post(() -> web.evaluateJavascript(js, null));
+    }
+    private void obtainPushToken(boolean promptPermission) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+            if (!promptPermission) { emitPushToken(null, "Autorizzazione notifiche non concessa."); return; }
+            pushPermissionPending = true;
+            ActivityCompat.requestPermissions(this, new String[]{"android.permission.POST_NOTIFICATIONS"}, PUSH_PERMISSION_REQUEST);
+            return;
+        }
+        RunnerPulseMessagingService.createChannel(this);
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+            if (task.isSuccessful() && task.getResult() != null) emitPushToken(task.getResult(), null);
+            else emitPushToken(null, "Token Firebase non disponibile. Riprova.");
+        });
+    }
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != PUSH_PERMISSION_REQUEST || !pushPermissionPending) return;
+        pushPermissionPending = false;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) obtainPushToken(false);
+        else emitPushToken(null, "Notifiche bloccate: abilita Runner Pulse nelle impostazioni Android.");
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -80,6 +112,18 @@ public final class WebViewLauncherActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         settings.setUserAgentString(settings.getUserAgentString() + " RunnerPulseAndroidWebView/1");
         web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void requestPushToken() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    obtainPushToken(true);
+                });
+            }
+            @JavascriptInterface public void requestPushStatusToken() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    obtainPushToken(false);
+                });
+            }
             @JavascriptInterface public void requestPermissionStatus() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
@@ -166,6 +210,7 @@ public final class WebViewLauncherActivity extends Activity {
         receiveHealthCallback(intent);
         receiveHealthSync(intent);
         receiveHealthSteps(intent);
+        receiveNotificationTap(intent);
     }
     @Override protected void onResume() {
         super.onResume();
@@ -173,6 +218,13 @@ public final class WebViewLauncherActivity extends Activity {
         receiveHealthCallback(getIntent());
         receiveHealthSync(getIntent());
         receiveHealthSteps(getIntent());
+        receiveNotificationTap(getIntent());
+    }
+    private void receiveNotificationTap(Intent intent) {
+        if (web == null || intent == null || !intent.hasExtra("runnerpulse_notification_path")) return;
+        String path = intent.getStringExtra("runnerpulse_notification_path");
+        intent.removeExtra("runnerpulse_notification_path");
+        if (path != null && path.startsWith("/") && !path.startsWith("//")) web.loadUrl(HOME.substring(0, HOME.length()-1) + path);
     }
     private void receiveHealthCallback(Intent intent) {
         if (web == null || intent == null || !intent.hasExtra("healthconnect_result")) return;
