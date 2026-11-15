@@ -1,0 +1,62 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.health.READ_STEPS"/>
+    <uses-permission android:name="android.permission.health.READ_SLEEP"/>
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
+    <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
+    <queries><package android:name="com.google.android.apps.healthdata"/></queries>
+    <application android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:label="Runner Pulse" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false">
+        <service android:name=".RunnerPulseMessagingService" android:exported="false">
+            <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter>
+        </service>
+        <activity android:name=".PermissionRationaleActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"/>
+            </intent-filter>
+        </activity>
+        <!-- Android 14+: required Health Connect privacy rationale entry point -->
+        <activity-alias
+            android:name=".ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".PermissionRationaleActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+        <!-- Previous fallback remains available internally, but is not the app entry point. -->
+        <activity android:name=".SafeLauncherActivity" android:exported="false" android:launchMode="singleTop" />
+        <!-- Verified TWA is the app entry point; keep DirectLauncherActivity as a fallback. -->
+        <activity android:name=".DiagnosticLauncherActivity" android:exported="false" android:launchMode="singleTop" />
+        <activity android:name=".WebViewLauncherActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="runnerpulseauth" android:host="callback" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".TwaLauncherActivity" android:exported="true" android:launchMode="singleTop">
+            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://runner-pulse-web.onrender.com/"/>
+            
+        </activity>
+        <activity android:name=".DirectLauncherActivity" android:exported="false" android:launchMode="singleTop">
+            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://runner-pulse-web.onrender.com/"/>
+        </activity>
+        <!-- Native Health Connect authorization is invoked only via the existing site deep link. -->
+        <activity android:name=".MainActivity" android:exported="true" android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="runnerpulseconnect" android:host="authorize"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
