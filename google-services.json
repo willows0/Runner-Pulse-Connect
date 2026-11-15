@@ -1,0 +1,113 @@
+{
+  "project_info": {
+    "project_number": "602428716854",
+    "project_id": "runnerpulse",
+    "storage_bucket": "runnerpulse.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:602428716854:android:7295f84b2cfb0a8ae6e597",
+        "android_client_info": {
+          "package_name": "com.example.runnerpulse"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "602428716854-5pamd98t9gk8f1ora42umlljf9m3o38l.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.runnerpulse",
+            "certificate_hash": "40353cd4a40fba609f11ef08eb3406e296e8c031"
+          }
+        },
+        {
+          "client_id": "602428716854-paqqagblfqvksl70p5cse1huqj8uhmk1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDG7Tv1wO9PsKvXNOEJHSaF70gfeOauLHY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "602428716854-paqqagblfqvksl70p5cse1huqj8uhmk1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:602428716854:android:081320dea4045b64e6e597",
+        "android_client_info": {
+          "package_name": "com.runnerpulse.connect"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "602428716854-paqqagblfqvksl70p5cse1huqj8uhmk1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDG7Tv1wO9PsKvXNOEJHSaF70gfeOauLHY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "602428716854-paqqagblfqvksl70p5cse1huqj8uhmk1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:602428716854:android:5107613bef75b76ce6e597",
+        "android_client_info": {
+          "package_name": "com.ugotrefiletti.RunnerPulse"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "602428716854-in896vq1mjtjk3vap44gd042v8k34sib.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ugotrefiletti.RunnerPulse",
+            "certificate_hash": "40353cd4a40fba609f11ef08eb3406e296e8c031"
+          }
+        },
+        {
+          "client_id": "602428716854-paqqagblfqvksl70p5cse1huqj8uhmk1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDG7Tv1wO9PsKvXNOEJHSaF70gfeOauLHY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "602428716854-paqqagblfqvksl70p5cse1huqj8uhmk1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
