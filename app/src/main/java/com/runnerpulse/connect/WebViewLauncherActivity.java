@@ -14,6 +14,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.graphics.Typeface;
 import android.view.View;
+import android.view.MotionEvent;
+import android.os.SystemClock;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -42,6 +44,56 @@ public final class WebViewLauncherActivity extends Activity {
     private FrameLayout splash;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private int splashChecks;
+    // Temporary on-screen diagnostics; no user data or network transmission.
+    private TextView diagnostics;
+    private long lastTouchAt;
+    private int touchCount;
+    private long lastJsMs = -1;
+    private long lastUiDelayMs = -1;
+    private boolean probePending;
+    private boolean diagnosticRunning;
+    private final Runnable diagnosticProbe = new Runnable() {
+        @Override public void run() {
+            if (!diagnosticRunning || web == null) return;
+            final long due = SystemClock.uptimeMillis();
+            // A delayed main-thread callback measures Android UI-thread congestion.
+            handler.postDelayed(() -> {
+                lastUiDelayMs = Math.max(0, SystemClock.uptimeMillis() - due - 250);
+                updateDiagnostics();
+            }, 250);
+            if (!probePending) {
+                probePending = true;
+                final long start = SystemClock.elapsedRealtime();
+                web.evaluateJavascript("'ok'", value -> {
+                    lastJsMs = SystemClock.elapsedRealtime() - start;
+                    probePending = false;
+                    updateDiagnostics();
+                });
+                handler.postDelayed(() -> {
+                    if (probePending && SystemClock.elapsedRealtime() - start >= 4000) {
+                        lastJsMs = -2;
+                        updateDiagnostics();
+                    }
+                }, 4000);
+            }
+            handler.postDelayed(this, 5000);
+        }
+    };
+    private void updateDiagnostics() {
+        if (diagnostics == null) return;
+        String js = lastJsMs == -2 ? "oltre 4s" : lastJsMs < 0 ? "..." : lastJsMs + "ms";
+        String ui = lastUiDelayMs < 0 ? "..." : lastUiDelayMs + "ms";
+        diagnostics.setText("DIAGNOSTICA 2.0\nTocchi: " + touchCount + "  JS: " + js + "\nRitardo Android: " + ui);
+    }
+    @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            touchCount++;
+            lastTouchAt = SystemClock.elapsedRealtime();
+            updateDiagnostics();
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
     private void dismissSplash() {
         if (splash == null) return;
         FrameLayout old = splash;
@@ -125,7 +177,22 @@ public final class WebViewLauncherActivity extends Activity {
         error.setPadding(40, 40, 40, 40);
         error.setVisibility(View.GONE);
         frame.addView(error, new FrameLayout.LayoutParams(-1, -2, android.view.Gravity.CENTER));
+        // Non-clickable native indicator; cannot intercept scrolling or taps.
+        diagnostics = new TextView(this);
+        diagnostics.setTextColor(Color.WHITE);
+        diagnostics.setTextSize(11);
+        diagnostics.setBackgroundColor(0xD9002038);
+        diagnostics.setPadding(12, 6, 12, 6);
+        diagnostics.setClickable(false);
+        diagnostics.setFocusable(false);
+        FrameLayout.LayoutParams diagParams = new FrameLayout.LayoutParams(-2, -2, android.view.Gravity.TOP | android.view.Gravity.RIGHT);
+        diagParams.topMargin = 5;
+        diagParams.rightMargin = 8;
+        frame.addView(diagnostics, diagParams);
+        updateDiagnostics();
         setContentView(frame);
+        diagnosticRunning = true;
+        handler.postDelayed(diagnosticProbe, 3000);
 
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -366,5 +433,5 @@ public final class WebViewLauncherActivity extends Activity {
             finish();
         }
     }
-    @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); if (fileChooserCallback != null) { fileChooserCallback.onReceiveValue(null); fileChooserCallback = null; } if (web != null) { web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { diagnosticRunning = false; handler.removeCallbacksAndMessages(null); if (fileChooserCallback != null) { fileChooserCallback.onReceiveValue(null); fileChooserCallback = null; } if (web != null) { web.destroy(); web = null; } super.onDestroy(); }
 }
