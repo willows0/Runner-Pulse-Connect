@@ -42,6 +42,7 @@ public final class WebViewLauncherActivity extends Activity {
     private FrameLayout splash;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private int splashChecks;
+    private long lastBackPressedAt = 0L;
     private static final int PUSH_PERMISSION_REQUEST = 8017;
     private boolean pushPermissionPending = false;
     private void emitPushToken(String token, String error) {
@@ -234,7 +235,18 @@ public final class WebViewLauncherActivity extends Activity {
                 catch (Exception e) { startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
                 return true;
             }
-            @Override public void onPageFinished(WebView view, String url) { checkAppReady(); }
+            @Override public void onPageFinished(WebView view, String url) {
+                // The web login gate is optional: never leave a full-screen splash
+                // covering a successfully loaded site when its markup changes.
+                if (url != null && url.startsWith(HOME)) {
+                    handler.postDelayed(() -> {
+                        if (web != null && splash != null && splash.getVisibility() == View.VISIBLE) {
+                            splash.setVisibility(View.GONE);
+                        }
+                    }, 1200);
+                }
+                checkAppReady();
+            }
             @Override public void onReceivedError(WebView view, android.webkit.WebResourceRequest req, android.webkit.WebResourceError err) {
                 if (req.isForMainFrame()) showError("Impossibile caricare Runner Pulse. Controlla la connessione e riapri l'app.");
             }
@@ -329,6 +341,21 @@ public final class WebViewLauncherActivity extends Activity {
     }
     private void showError(String message) { if(splash!=null)splash.setVisibility(View.GONE); progress.setVisibility(View.GONE); error.setText(message); error.setVisibility(View.VISIBLE); }
     @Override protected void onSaveInstanceState(Bundle out) { web.saveState(out); out.putString("mobileLoginState",pendingState); super.onSaveInstanceState(out); }
-    @Override public void onBackPressed() { if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed(); }
-    @Override protected void onDestroy() { if (fileChooserCallback != null) { fileChooserCallback.onReceiveValue(null); fileChooserCallback = null; } if (web != null) { web.destroy(); web = null; } super.onDestroy(); }
+    @Override public void onBackPressed() {
+        // A second Back press always exits, even if the web app has accumulated
+        // a long SPA navigation history or a modal has trapped navigation.
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastBackPressedAt < 2200) {
+            finish();
+            return;
+        }
+        lastBackPressedAt = now;
+        if (web != null && web.canGoBack()) {
+            web.goBack();
+            android.widget.Toast.makeText(this, "Premi di nuovo Indietro per uscire", android.widget.Toast.LENGTH_SHORT).show();
+        } else {
+            finish();
+        }
+    }
+    @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); if (fileChooserCallback != null) { fileChooserCallback.onReceiveValue(null); fileChooserCallback = null; } if (web != null) { web.destroy(); web = null; } super.onDestroy(); }
 }
