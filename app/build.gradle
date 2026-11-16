@@ -1,17 +1,30 @@
-plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
+
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.google.gms.google-services'
+}
 
 android {
     namespace 'com.runnerpulse.connect'
     compileSdk 35
+
     defaultConfig {
         applicationId 'com.runnerpulse.connect'
         minSdk 28
         targetSdk 35
-        versionCode 14
-        versionName '1.4-webview-test'
+        versionCode 15
+        versionName '1.5-native-push'
     }
-    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = '17' }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
 
     signingConfigs {
         release {
@@ -24,6 +37,7 @@ android {
             }
         }
     }
+
     buildTypes {
         release {
             minifyEnabled false
@@ -35,8 +49,12 @@ android {
 }
 
 dependencies {
+    implementation 'com.google.firebase:firebase-messaging:24.1.0'
+    implementation 'androidx.core:core:1.15.0'
     implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2'
-    implementation('androidx.browser:browser') { version { strictly '1.8.0' } }
+    implementation('androidx.browser:browser') {
+        version { strictly '1.8.0' }
+    }
     implementation 'androidx.activity:activity-ktx:1.9.3'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
     implementation 'androidx.health.connect:connect-client:1.1.0-alpha11'
