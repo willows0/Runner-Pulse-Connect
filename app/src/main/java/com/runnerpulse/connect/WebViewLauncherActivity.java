@@ -16,6 +16,7 @@ import android.graphics.Typeface;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
+import android.webkit.ValueCallback;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -30,6 +31,8 @@ import androidx.browser.customtabs.CustomTabsIntent;
 /** Full-screen web shell. Google OAuth cannot be completed inside embedded WebView. */
 public final class WebViewLauncherActivity extends Activity {
     private static final String HOME = "https://runner-pulse-web.onrender.com/";
+    private static final int FILE_PICKER_REQUEST = 8020;
+    private ValueCallback<Uri[]> pendingFileChooser;
     private WebView web;
     private ProgressBar progress;
     private TextView error;
@@ -107,7 +110,7 @@ public final class WebViewLauncherActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
+        settings.setAllowContentAccess(true);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         settings.setUserAgentString(settings.getUserAgentString() + " RunnerPulseAndroidWebView/1");
@@ -152,7 +155,33 @@ public final class WebViewLauncherActivity extends Activity {
                 });
             }
         }, "RunnerPulseHealthNative");
-        web.setWebChromeClient(new WebChromeClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (pendingFileChooser != null) {
+                    pendingFileChooser.onReceiveValue(null);
+                    pendingFileChooser = null;
+                }
+                pendingFileChooser = callback;
+                try {
+                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    pick.addCategory(Intent.CATEGORY_OPENABLE);
+                    pick.setType("*/*");
+                    pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                        "application/octet-stream", "application/zip", "application/x-zip-compressed",
+                        "application/vnd.ant.fit", "application/xml", "text/xml", "*/*"
+                    });
+                    pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivityForResult(pick, FILE_PICKER_REQUEST);
+                    return true;
+                } catch (Exception e) {
+                    pendingFileChooser = null;
+                    callback.onReceiveValue(null);
+                    android.widget.Toast.makeText(WebViewLauncherActivity.this,
+                        "Impossibile aprire il selettore file.", android.widget.Toast.LENGTH_LONG).show();
+                    return true;
+                }
+            }
+        });
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
@@ -202,6 +231,22 @@ public final class WebViewLauncherActivity extends Activity {
         });
         if (state != null) web.restoreState(state);
         else web.loadUrl(HOME);
+    }
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != FILE_PICKER_REQUEST) return;
+        ValueCallback<Uri[]> callback = pendingFileChooser;
+        pendingFileChooser = null;
+        if (callback == null) return;
+        Uri[] selected = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+        callback.onReceiveValue(selected);
+    }
+    @Override protected void onDestroy() {
+        if (pendingFileChooser != null) {
+            pendingFileChooser.onReceiveValue(null);
+            pendingFileChooser = null;
+        }
+        super.onDestroy();
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
