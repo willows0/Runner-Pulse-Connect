@@ -22,6 +22,9 @@ import android.webkit.WebView;
 import android.webkit.JavascriptInterface;
 import org.json.JSONObject;
 import android.webkit.WebViewClient;
+import android.webkit.ValueCallback;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -30,6 +33,8 @@ import androidx.browser.customtabs.CustomTabsIntent;
 /** Full-screen web shell. Google OAuth cannot be completed inside embedded WebView. */
 public final class WebViewLauncherActivity extends Activity {
     private static final String HOME = "https://runner-pulse-web.onrender.com/";
+    private static final int FILE_CHOOSER_REQUEST = 8021;
+    private ValueCallback<Uri[]> fileChooserCallback;
     private WebView web;
     private ProgressBar progress;
     private TextView error;
@@ -68,11 +73,20 @@ public final class WebViewLauncherActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         if (state != null) pendingState=state.getString("mobileLoginState");
-        // Keep the WebView below the Android status bar and above the navigation bar.
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
-        getWindow().setStatusBarColor(Color.rgb(14, 25, 48));
-        getWindow().setNavigationBarColor(Color.rgb(14, 25, 48));
+        // Explicit insets: Android 15 enforces edge-to-edge even for target SDK 35.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        getWindow().getDecorView().setSystemUiVisibility(0);
         FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(Color.rgb(14, 25, 48));
+        ViewCompat.setOnApplyWindowInsetsListener(frame, (view, insets) -> {
+            androidx.core.graphics.Insets bars = insets.getInsets(
+                WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars() |
+                WindowInsetsCompat.Type.displayCutout());
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return insets;
+        });
         web = new WebView(this);
         web.setBackgroundColor(Color.rgb(14, 25, 48));
         frame.addView(web, new FrameLayout.LayoutParams(-1, -1));
@@ -109,7 +123,8 @@ public final class WebViewLauncherActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
+        // Android document picker returns content:// URIs, not file:// paths.
+        settings.setAllowContentAccess(true);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         settings.setUserAgentString(settings.getUserAgentString() + " RunnerPulseAndroidWebView/1");
@@ -154,7 +169,29 @@ public final class WebViewLauncherActivity extends Activity {
                 });
             }
         }, "RunnerPulseHealthNative");
-        web.setWebChromeClient(new WebChromeClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onShowFileChooser(WebView view,
+                    ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (fileChooserCallback != null) fileChooserCallback.onReceiveValue(null);
+                fileChooserCallback = callback;
+                try {
+                    Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    picker.addCategory(Intent.CATEGORY_OPENABLE);
+                    picker.setType("*/*");
+                    picker.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                        "application/octet-stream", "application/zip", "application/x-zip-compressed",
+                        "application/vnd.ant.fit", "application/xml", "text/xml", "*/*"});
+                    startActivityForResult(picker, FILE_CHOOSER_REQUEST);
+                    return true;
+                } catch (Exception e) {
+                    fileChooserCallback = null;
+                    callback.onReceiveValue(null);
+                    android.widget.Toast.makeText(WebViewLauncherActivity.this,
+                        "Impossibile aprire i file Android", android.widget.Toast.LENGTH_LONG).show();
+                    return true;
+                }
+            }
+        });
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
@@ -204,6 +241,22 @@ public final class WebViewLauncherActivity extends Activity {
         });
         if (state != null) web.restoreState(state);
         else web.loadUrl(HOME);
+    }
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != FILE_CHOOSER_REQUEST) return;
+        ValueCallback<Uri[]> callback = fileChooserCallback;
+        fileChooserCallback = null;
+        if (callback == null) return;
+        Uri[] uris = null;
+        if (resultCode == RESULT_OK && data != null) {
+            if (data.getClipData() != null) {
+                int count = data.getClipData().getItemCount();
+                uris = new Uri[count];
+                for (int i = 0; i < count; i++) uris[i] = data.getClipData().getItemAt(i).getUri();
+            } else if (data.getData() != null) uris = new Uri[]{data.getData()};
+        }
+        callback.onReceiveValue(uris);
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
@@ -277,5 +330,5 @@ public final class WebViewLauncherActivity extends Activity {
     private void showError(String message) { if(splash!=null)splash.setVisibility(View.GONE); progress.setVisibility(View.GONE); error.setText(message); error.setVisibility(View.VISIBLE); }
     @Override protected void onSaveInstanceState(Bundle out) { web.saveState(out); out.putString("mobileLoginState",pendingState); super.onSaveInstanceState(out); }
     @Override public void onBackPressed() { if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed(); }
-    @Override protected void onDestroy() { if (web != null) { web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { if (fileChooserCallback != null) { fileChooserCallback.onReceiveValue(null); fileChooserCallback = null; } if (web != null) { web.destroy(); web = null; } super.onDestroy(); }
 }
