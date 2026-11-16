@@ -42,6 +42,15 @@ public final class WebViewLauncherActivity extends Activity {
     private FrameLayout splash;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private int splashChecks;
+    private void dismissSplash() {
+        if (splash == null) return;
+        FrameLayout old = splash;
+        splash = null;
+        old.setVisibility(View.GONE);
+        if (old.getParent() instanceof android.view.ViewGroup) {
+            ((android.view.ViewGroup) old.getParent()).removeView(old);
+        }
+    }
     private long lastBackPressedAt = 0L;
     private static final int PUSH_PERMISSION_REQUEST = 8017;
     private boolean pushPermissionPending = false;
@@ -241,7 +250,7 @@ public final class WebViewLauncherActivity extends Activity {
                 if (url != null && url.startsWith(HOME)) {
                     handler.postDelayed(() -> {
                         if (web != null && splash != null && splash.getVisibility() == View.VISIBLE) {
-                            splash.setVisibility(View.GONE);
+                            dismissSplash();
                         }
                     }, 1200);
                 }
@@ -334,12 +343,12 @@ public final class WebViewLauncherActivity extends Activity {
     private void checkAppReady() {
         if (web == null || splash == null || splash.getVisibility() != View.VISIBLE) return;
         web.evaluateJavascript("Boolean(document.getElementById('rp-login-gate'))", value -> {
-            if ("true".equals(value)) { splash.setVisibility(View.GONE); return; }
+            if ("true".equals(value)) { dismissSplash(); return; }
             if (++splashChecks < 150) handler.postDelayed(this::checkAppReady, 800);
             else showError("Runner Pulse impiega troppo tempo a caricarsi. Riapri l'app.");
         });
     }
-    private void showError(String message) { if(splash!=null)splash.setVisibility(View.GONE); progress.setVisibility(View.GONE); error.setText(message); error.setVisibility(View.VISIBLE); }
+    private void showError(String message) { dismissSplash(); progress.setVisibility(View.GONE); error.setText(message); error.setVisibility(View.VISIBLE); }
     @Override protected void onSaveInstanceState(Bundle out) { web.saveState(out); out.putString("mobileLoginState",pendingState); super.onSaveInstanceState(out); }
     @Override public void onBackPressed() {
         // A second Back press always exits, even if the web app has accumulated
