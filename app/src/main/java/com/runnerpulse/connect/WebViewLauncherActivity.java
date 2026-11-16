@@ -48,6 +48,8 @@ public final class WebViewLauncherActivity extends Activity {
     private TextView diagnostics;
     private long lastTouchAt;
     private int touchCount;
+    private int webTouchCount;
+    private int domTouchCount;
     private long lastJsMs = -1;
     private long lastUiDelayMs = -1;
     private boolean probePending;
@@ -83,7 +85,7 @@ public final class WebViewLauncherActivity extends Activity {
         if (diagnostics == null) return;
         String js = lastJsMs == -2 ? "oltre 4s" : lastJsMs < 0 ? "..." : lastJsMs + "ms";
         String ui = lastUiDelayMs < 0 ? "..." : lastUiDelayMs + "ms";
-        diagnostics.setText("DIAGNOSTICA 2.0\nTocchi: " + touchCount + "  JS: " + js + "\nRitardo Android: " + ui);
+        diagnostics.setText("DIAGNOSTICA 2.1\nAndroid: " + touchCount + " Web: " + webTouchCount + " DOM: " + domTouchCount + "\nJS: " + js + " UI: " + ui);
     }
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
@@ -152,6 +154,13 @@ public final class WebViewLauncherActivity extends Activity {
         web = new WebView(this);
         web.setBackgroundColor(Color.rgb(14, 25, 48));
         frame.addView(web, new FrameLayout.LayoutParams(-1, -1));
+        web.setOnTouchListener((v, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                webTouchCount++;
+                updateDiagnostics();
+            }
+            return false; // Never consume the event.
+        });
         splash = new FrameLayout(this);
         splash.setBackgroundColor(Color.rgb(244, 113, 28));
         frame.addView(splash, new FrameLayout.LayoutParams(-1, -1));
@@ -205,6 +214,11 @@ public final class WebViewLauncherActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         settings.setUserAgentString(settings.getUserAgentString() + " RunnerPulseAndroidWebView/1");
+        web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void domTouch() {
+                runOnUiThread(() -> { domTouchCount++; updateDiagnostics(); });
+            }
+        }, "RPDiagnostics");
         web.addJavascriptInterface(new Object() {
             @JavascriptInterface public void requestPushToken() {
                 runOnUiThread(() -> {
@@ -321,6 +335,8 @@ public final class WebViewLauncherActivity extends Activity {
                         }
                     }, 1200);
                 }
+                // Capture DOM pointerdown independently of Android touch delivery.
+                view.evaluateJavascript("(function(){if(window.__rpTouchProbe)return;window.__rpTouchProbe=true;document.addEventListener('pointerdown',function(){try{RPDiagnostics.domTouch()}catch(e){}},true)})()", null);
                 checkAppReady();
             }
             @Override public void onReceivedError(WebView view, android.webkit.WebResourceRequest req, android.webkit.WebResourceError err) {
