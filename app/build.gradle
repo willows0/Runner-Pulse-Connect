@@ -13,8 +13,8 @@ android {
         applicationId 'com.runnerpulse.connect'
         minSdk 28
         targetSdk 35
-        versionCode 20
-        versionName '2.0-diagnostica'
+        versionCode 21
+        versionName '2.1-diagnostica'
     }
 
     compileOptions {
