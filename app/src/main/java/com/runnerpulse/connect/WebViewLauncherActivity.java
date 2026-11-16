@@ -35,6 +35,14 @@ import androidx.browser.customtabs.CustomTabsIntent;
 /** Full-screen web shell. Google OAuth cannot be completed inside embedded WebView. */
 public final class WebViewLauncherActivity extends Activity {
     private static final String HOME = "https://runner-pulse-web.onrender.com/";
+    private static final String TEST_BASE = "https://appassets.androidplatform.net/";
+    // Self-contained offline touch/scroll test. No external scripts, accounts or data.
+    private static final String TEST_HTML = "<!doctype html><html lang=\"it\"><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,user-scalable=no\"><style>body{font:18px system-ui;margin:0;background:#fff8f3;color:#12243c}header{position:sticky;top:0;background:#11263e;color:white;padding:18px}main{padding:20px}button{font:inherit;border:0;border-radius:12px;background:#fa790d;color:white;padding:20px;margin:8px 8px 8px 0;min-width:115px}section{padding:24px;margin:12px 0;background:white;border:1px solid #ddd;border-radius:14px}#count{font-weight:bold;font-size:32px}</style></head><body><header>TEST WEBVIEW 2.2 — OFFLINE</header><main><p>Premi 10 volte il pulsante arancione e scorri fino in fondo. Questa pagina non usa Runner Pulse Web.</p><p>Tocchi pulsante: <span id=\"count\">0</span></p><button id=\"tap\" onclick=\"document.getElementById('count').textContent=++window.n\">TOCCA QUI</button><button onclick=\"RPTest.openSite()\">Apri Runner Pulse</button><p id=\"status\">Prova anche a scorrere verso il basso.</p><div id=\"items\"></div></main><script>window.n=0;var el=document.getElementById('items');for(var i=1;i<=25;i++){var x=document.createElement('section');x.textContent='Sezione di scorrimento '+i;el.appendChild(x)}document.addEventListener('pointerdown',function(){document.getElementById('status').textContent='Ultimo tocco ricevuto: '+new Date().toLocaleTimeString()},true)</script></body></html>";
+    private void loadOfflineTest() {
+        if (web == null) return;
+        dismissSplash();
+        web.loadDataWithBaseURL(TEST_BASE, TEST_HTML, "text/html", "UTF-8", null);
+    }
     private static final int FILE_CHOOSER_REQUEST = 8021;
     private ValueCallback<Uri[]> fileChooserCallback;
     private WebView web;
@@ -85,7 +93,7 @@ public final class WebViewLauncherActivity extends Activity {
         if (diagnostics == null) return;
         String js = lastJsMs == -2 ? "oltre 4s" : lastJsMs < 0 ? "..." : lastJsMs + "ms";
         String ui = lastUiDelayMs < 0 ? "..." : lastUiDelayMs + "ms";
-        diagnostics.setText("DIAGNOSTICA 2.1\nAndroid: " + touchCount + " Web: " + webTouchCount + " DOM: " + domTouchCount + "\nJS: " + js + " UI: " + ui);
+        diagnostics.setText("DIAGNOSTICA 2.2\nAndroid: " + touchCount + " Web: " + webTouchCount + " DOM: " + domTouchCount + "\nJS: " + js + " UI: " + ui);
     }
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
@@ -215,6 +223,11 @@ public final class WebViewLauncherActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         settings.setUserAgentString(settings.getUserAgentString() + " RunnerPulseAndroidWebView/1");
         web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void openSite() {
+                runOnUiThread(() -> { if (web != null) web.loadUrl(HOME); });
+            }
+        }, "RPTest");
+        web.addJavascriptInterface(new Object() {
             @JavascriptInterface public void domTouch() {
                 runOnUiThread(() -> { domTouchCount++; updateDiagnostics(); });
             }
@@ -337,14 +350,14 @@ public final class WebViewLauncherActivity extends Activity {
                 }
                 // Capture DOM pointerdown independently of Android touch delivery.
                 view.evaluateJavascript("(function(){if(window.__rpTouchProbe)return;window.__rpTouchProbe=true;document.addEventListener('pointerdown',function(){try{RPDiagnostics.domTouch()}catch(e){}},true)})()", null);
-                checkAppReady();
+                if (url != null && url.startsWith(HOME)) checkAppReady();
             }
             @Override public void onReceivedError(WebView view, android.webkit.WebResourceRequest req, android.webkit.WebResourceError err) {
                 if (req.isForMainFrame()) showError("Impossibile caricare Runner Pulse. Controlla la connessione e riapri l'app.");
             }
         });
-        if (state != null) web.restoreState(state);
-        else web.loadUrl(HOME);
+        // Diagnostic build starts with an offline page, regardless of previous WebView history.
+        loadOfflineTest();
     }
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
