@@ -363,6 +363,21 @@ public final class WebViewLauncherActivity extends Activity {
                         }
                     }, 1200);
                 }
+                // Diagnostic only: remove visual animations from the live site, not its data/network logic.
+                // Reapply when a SPA rebuilds its document/head.
+                if (url != null && url.startsWith(HOME)) {
+                    final String quietCss = "(function(){try{if(document.getElementById('rp-diag-quiet-css'))return;" +
+                        "var st=document.createElement('style');st.id='rp-diag-quiet-css';" +
+                        "st.textContent='*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}';" +
+                        "(document.head||document.documentElement).appendChild(st);" +
+                        "console.log('[RP DIAG 2.4] Animazioni CSS disattivate');" +
+                        "}catch(e){console.log('[RP DIAG 2.4]',e)}})()";
+                    view.evaluateJavascript(quietCss, null);
+                    handler.postDelayed(() -> {
+                        if (web != null && web.getUrl() != null && web.getUrl().startsWith(HOME))
+                            web.evaluateJavascript(quietCss, null);
+                    }, 2000);
+                }
                 // Capture DOM pointerdown independently of Android touch delivery.
                 view.evaluateJavascript("(function(){if(window.__rpTouchProbe)return;window.__rpTouchProbe=true;document.addEventListener('pointerdown',function(){try{RPDiagnostics.domTouch()}catch(e){}},true)})()", null);
                 if (url != null && url.startsWith(HOME)) checkAppReady();
