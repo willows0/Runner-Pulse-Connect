@@ -19,6 +19,9 @@ import android.os.SystemClock;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.JavascriptInterface;
@@ -297,6 +300,18 @@ public final class WebViewLauncherActivity extends Activity {
             }
         });
         web.setWebViewClient(new WebViewClient() {
+            // DIAGNOSTIC ONLY: block Coach weekly notification module in embedded WebView.
+            // The server, Chrome and other site assets remain unchanged.
+            @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                Uri u = request.getUrl();
+                if (u != null && "https".equalsIgnoreCase(u.getScheme())
+                        && "runner-pulse-web.onrender.com".equalsIgnoreCase(u.getHost())
+                        && "/weekly-push.js".equals(u.getPath())) {
+                    byte[] empty = "/* Weekly Coach push disabled for WebView diagnostic test */".getBytes(StandardCharsets.UTF_8);
+                    return new WebResourceResponse("application/javascript", "UTF-8", new ByteArrayInputStream(empty));
+                }
+                return super.shouldInterceptRequest(view, request);
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String scheme = uri.getScheme();
