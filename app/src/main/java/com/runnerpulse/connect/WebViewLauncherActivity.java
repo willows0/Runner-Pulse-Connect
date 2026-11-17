@@ -57,6 +57,25 @@ public final class WebViewLauncherActivity extends Activity {
         }
     }
     private long lastBackPressedAt = 0L;
+    // Avoid launching repeated Health Connect activities during Home startup.
+    // The web page can request the same data repeatedly as widgets initialize.
+    private long lastHealthStatusAt = 0L;
+    private long lastHealthStepsAt = 0L;
+    private long lastHealthSyncAt = 0L;
+    private boolean allowHealthRequest(String kind) {
+        long now = SystemClock.elapsedRealtime();
+        if ("status".equals(kind)) {
+            if (lastHealthStatusAt != 0L && now - lastHealthStatusAt < 20000L) return false;
+            lastHealthStatusAt = now;
+        } else if ("steps".equals(kind)) {
+            if (lastHealthStepsAt != 0L && now - lastHealthStepsAt < 30000L) return false;
+            lastHealthStepsAt = now;
+        } else if ("sync".equals(kind)) {
+            if (lastHealthSyncAt != 0L && now - lastHealthSyncAt < 60000L) return false;
+            lastHealthSyncAt = now;
+        }
+        return true;
+    }
     private static final int PUSH_PERMISSION_REQUEST = 8017;
     private boolean pushPermissionPending = false;
     private void emitPushToken(String token, String error) {
@@ -159,6 +178,7 @@ public final class WebViewLauncherActivity extends Activity {
             @JavascriptInterface public void requestPermissionStatus() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    if (!allowHealthRequest("status")) return;
                     Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
                     i.setAction(Intent.ACTION_VIEW);
                     i.setData(Uri.parse("runnerpulseconnect://status"));
@@ -168,6 +188,7 @@ public final class WebViewLauncherActivity extends Activity {
             @JavascriptInterface public void requestSteps() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    if (!allowHealthRequest("steps")) return;
                     Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
                     i.setAction(Intent.ACTION_VIEW);
                     i.setData(Uri.parse("runnerpulseconnect://steps"));
@@ -177,6 +198,7 @@ public final class WebViewLauncherActivity extends Activity {
             @JavascriptInterface public void requestExerciseSync() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    if (!allowHealthRequest("sync")) return;
                     Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
                     i.setAction(Intent.ACTION_VIEW);
                     i.setData(Uri.parse("runnerpulseconnect://sync"));
@@ -230,6 +252,8 @@ public final class WebViewLauncherActivity extends Activity {
                             String hostAction = uri.getHost();
                             if ("revoke".equalsIgnoreCase(hostAction) || "status".equalsIgnoreCase(hostAction) || "sync".equalsIgnoreCase(hostAction) || "steps".equalsIgnoreCase(hostAction)) action = hostAction;
                         }
+                        if (("status".equals(action) || "steps".equals(action) || "sync".equals(action))
+                                && !allowHealthRequest(action)) return true;
                         Intent health = new Intent(WebViewLauncherActivity.this, MainActivity.class);
                         health.setAction(Intent.ACTION_VIEW);
                         health.setData(Uri.parse("runnerpulseconnect://" + action));
