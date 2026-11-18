@@ -185,6 +185,16 @@ public final class WebViewLauncherActivity extends Activity {
                     startActivity(i);
                 });
             }
+            @JavascriptInterface public void requestHealthAuthorization() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    if (!allowHealthRequest("authorize")) return;
+                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
+                    i.setAction(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse("runnerpulseconnect://authorize"));
+                    startActivity(i);
+                });
+            }
             @JavascriptInterface public void requestSteps() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
