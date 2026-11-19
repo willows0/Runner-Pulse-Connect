@@ -19,6 +19,10 @@ import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.Vo2MaxRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
+import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -28,16 +32,26 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.time.Duration
 
 class MainActivity : ComponentActivity() {
     private lateinit var status: TextView
     private var client: HealthConnectClient? = null
-    private val permissions = setOf(
+    private var homePending = 0
+    private var homePayload = JSONObject()
+    private val corePermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(SleepSessionRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
         HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     )
+    // Nuovi permessi opzionali: se non concessi il collegamento precedente resta verde.
+    private val optionalPermissions = setOf(
+        HealthPermission.getReadPermission(DistanceRecord::class),
+        HealthPermission.getReadPermission(Vo2MaxRecord::class),
+        HealthPermission.getReadPermission(RestingHeartRateRecord::class)
+    )
+    private val permissions get() = corePermissions + optionalPermissions
     private val permissionRequest = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
@@ -55,7 +69,7 @@ class MainActivity : ComponentActivity() {
             try {
                 val granted = health.permissionController.getGrantedPermissions()
                 val result = when {
-                    granted.containsAll(permissions) -> "authorized"
+                    granted.containsAll(corePermissions) -> "authorized"
                     granted.isNotEmpty() -> "partial"
                     else -> "denied"
                 }
@@ -98,7 +112,7 @@ class MainActivity : ComponentActivity() {
     private fun isAuthorizeLink(intent: Intent?): Boolean =
         intent?.action == Intent.ACTION_VIEW &&
         intent.data?.scheme == "runnerpulseconnect" &&
-        intent.data?.host in setOf("authorize", "revoke", "status", "sync", "steps")
+        intent.data?.host in setOf("authorize", "revoke", "status", "sync", "steps", "sleep", "vitals", "home")
 
     // Health Connect manages grants persistently. Do not call revokeAllPermissions():
     // on some Android versions it may terminate this app's process.
@@ -144,6 +158,9 @@ class MainActivity : ComponentActivity() {
             "revoke" -> openHealthPermissionSettings()
             "sync" -> syncExercises()
             "steps" -> syncSteps()
+            "sleep" -> syncSleep()
+            "vitals" -> syncVitals()
+            "home" -> syncHomeHealth()
             "status" -> returnToProfile()
             "authorize" -> openPermissionScreen()
             else -> openWeb()
@@ -195,6 +212,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Un solo passaggio Activity legge tutti i dati Home, evitando che tre Intents
+    // simultanei sovrascrivano i risultati o provochino la chiusura della WebView.
+    private fun syncHomeHealth() {
+        homePending = 3
+        homePayload = JSONObject()
+        syncSteps()
+        syncSleep()
+        syncVitals()
+    }
+    private fun addHomeResult(part: String, data: JSONObject) {
+        if (homePending <= 0) return
+        homePayload.put(part, data)
+        homePending -= 1
+        if (homePending == 0) {
+            val target=Intent(this,WebViewLauncherActivity::class.java).apply {
+                flags=Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("healthconnect_home",homePayload.toString())
+            }
+            startActivity(target)
+            finish()
+        }
+    }
+
     // Daily steps are aggregated by Health Connect across sources; never sum raw
     // Garmin/Fit/HONOR records, which can overlap.
     private fun syncSteps() {
@@ -231,6 +271,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendStepsResult(result: JSONObject) {
+        if (homePending > 0) { addHomeResult("steps",result); return }
         val target = Intent(this, WebViewLauncherActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("healthconnect_steps", result.toString())
@@ -261,7 +302,20 @@ class MainActivity : ComponentActivity() {
                     ))
                     for (r in response.records) {
                         if (records.length() >= 300) break
+                        var distance: Double? = null
+                        // Solo distanze realmente presenti per la stessa origine (HONOR ecc.).
+                        if (HealthPermission.getReadPermission(DistanceRecord::class) in granted) {
+                            try {
+                                val summary = health.aggregate(AggregateRequest(
+                                    metrics = setOf(DistanceRecord.DISTANCE_TOTAL),
+                                    timeRangeFilter = TimeRangeFilter.between(r.startTime, r.endTime),
+                                    dataOriginFilter = setOf(DataOrigin(r.metadata.dataOrigin.packageName))
+                                ))
+                                distance = summary[DistanceRecord.DISTANCE_TOTAL]?.inMeters
+                            } catch (_: Exception) { /* Nessun dato, lascia null. */ }
+                        }
                         records.put(JSONObject()
+                            .put("distanceMeters", distance ?: JSONObject.NULL)
                             .put("id", r.metadata.id)
                             .put("sourcePackage", r.metadata.dataOrigin.packageName)
                             .put("start", r.startTime.toEpochMilli())
@@ -283,6 +337,131 @@ class MainActivity : ComponentActivity() {
         val target = Intent(this, WebViewLauncherActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("healthconnect_sync", result.toString())
+        }
+        startActivity(target)
+        finish()
+    }
+
+    // I dati provengono da Health Connect; il nome HONOR non viene attribuito
+    // a un record scritto da altre applicazioni.
+    private fun syncSleep() {
+        val health = client ?: run {
+            sendNativeHealthResult("healthconnect_sleep", JSONObject().put("error", "Health Connect non disponibile")); return
+        }
+        lifecycleScope.launch {
+            try {
+                val granted = health.permissionController.getGrantedPermissions()
+                if (HealthPermission.getReadPermission(SleepSessionRecord::class) !in granted) {
+                    sendNativeHealthResult("healthconnect_sleep", JSONObject().put("error", "Autorizza la lettura del sonno"))
+                    return@launch
+                }
+                val zone = ZoneId.systemDefault()
+                val today = LocalDate.now(zone)
+                val best = mutableMapOf<LocalDate, JSONObject>()
+                var pageToken: String? = null
+                var pages = 0
+                do {
+                    val result = health.readRecords(ReadRecordsRequest(
+                        SleepSessionRecord::class,
+                        TimeRangeFilter.between(today.minusDays(8).atStartOfDay(zone).toInstant(), Instant.now()),
+                        pageSize = 100,
+                        pageToken = pageToken
+                    ))
+                    for (r in result.records) {
+                        val day = r.endTime.atZone(zone).toLocalDate()
+                        if (day.isBefore(today.minusDays(6)) || day.isAfter(today)) continue
+                        val length = Duration.between(r.startTime, r.endTime).seconds
+                        if (length <= 0 || length > 86400) continue
+                        var deep=0L;var rem=0L;var light=0L;var awake=0L
+                        for (stage in r.stages) {
+                            val sec=Duration.between(stage.startTime, stage.endTime).seconds.coerceAtLeast(0)
+                            when (stage.stage) {
+                                SleepSessionRecord.STAGE_TYPE_DEEP -> deep += sec
+                                SleepSessionRecord.STAGE_TYPE_REM -> rem += sec
+                                SleepSessionRecord.STAGE_TYPE_LIGHT -> light += sec
+                                SleepSessionRecord.STAGE_TYPE_AWAKE,
+                                SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED,
+                                SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> awake += sec
+                            }
+                        }
+                        val asleep = if (deep+rem+light>0) deep+rem+light else (length-awake).coerceAtLeast(0)
+                        val record = JSONObject().put("date", day.toString())
+                            .put("seconds", asleep)
+                            .put("durationRaw", length)
+                            .put("sourcePackage", r.metadata.dataOrigin.packageName)
+                            .put("deepSeconds", if (deep+rem+light>0) deep else JSONObject.NULL)
+                            .put("remSeconds", if (deep+rem+light>0) rem else JSONObject.NULL)
+                            .put("lightSeconds", if (deep+rem+light>0) light else JSONObject.NULL)
+                            .put("awakeSeconds", if (deep+rem+light>0) awake else JSONObject.NULL)
+                        val old = best[day]
+                        val provider=r.metadata.dataOrigin.packageName.lowercase()
+                        val isHonor=provider.contains("honor")
+                        val oldHonor=old?.optString("sourcePackage","")?.lowercase()?.contains("honor") == true
+                        if (old==null || (isHonor && !oldHonor) || (isHonor==oldHonor && length>old.optLong("durationRaw",0))) best[day]=record
+                    }
+                    pageToken=result.pageToken;pages++
+                } while (pageToken != null && pages < 3)
+                val days=JSONArray()
+                for (offset in 6 downTo 0) {
+                    val day=today.minusDays(offset.toLong())
+                    days.put(best[day] ?: JSONObject().put("date",day.toString())
+                        .put("seconds",JSONObject.NULL).put("deepSeconds",JSONObject.NULL)
+                        .put("remSeconds",JSONObject.NULL).put("lightSeconds",JSONObject.NULL)
+                        .put("awakeSeconds",JSONObject.NULL).put("sourcePackage",""))
+                }
+                sendNativeHealthResult("healthconnect_sleep", JSONObject().put("days",days).put("source","Health Connect"))
+            } catch (e: Exception) {
+                sendNativeHealthResult("healthconnect_sleep", JSONObject().put("error", "Lettura sonno non riuscita: " + e.javaClass.simpleName))
+            }
+        }
+    }
+
+    private fun syncVitals() {
+        val health = client ?: run {
+            sendNativeHealthResult("healthconnect_vitals", JSONObject().put("error", "Health Connect non disponibile")); return
+        }
+        lifecycleScope.launch {
+            try {
+                val granted=health.permissionController.getGrantedPermissions()
+                val output=JSONObject().put("vo2max",JSONObject.NULL).put("restingHeartRate",JSONObject.NULL)
+                val from=Instant.now().minus(30,ChronoUnit.DAYS)
+                if (HealthPermission.getReadPermission(Vo2MaxRecord::class) in granted) {
+                    try {
+                        val response=health.readRecords(ReadRecordsRequest(Vo2MaxRecord::class,
+                            TimeRangeFilter.between(from,Instant.now()),pageSize=100))
+                        val record=response.records.maxByOrNull { it.time }
+                        if (record != null) {
+                            output.put("vo2max",record.vo2MillilitersPerMinuteKilogram)
+                            output.put("vo2SourcePackage",record.metadata.dataOrigin.packageName)
+                        }
+                    } catch (_: Exception) { }
+                }
+                if (HealthPermission.getReadPermission(RestingHeartRateRecord::class) in granted) {
+                    try {
+                        val response=health.readRecords(ReadRecordsRequest(RestingHeartRateRecord::class,
+                            TimeRangeFilter.between(from,Instant.now()),pageSize=100))
+                        val record=response.records.maxByOrNull { it.time }
+                        if (record != null) {
+                            output.put("restingHeartRate",record.beatsPerMinute)
+                            output.put("heartSourcePackage",record.metadata.dataOrigin.packageName)
+                        }
+                    } catch (_: Exception) { }
+                }
+                sendNativeHealthResult("healthconnect_vitals",output)
+            } catch (e: Exception) {
+                sendNativeHealthResult("healthconnect_vitals",JSONObject().put("error", "Lettura parametri non riuscita"))
+            }
+        }
+    }
+
+    private fun sendNativeHealthResult(extraName: String, result: JSONObject) {
+        if (homePending > 0) {
+            addHomeResult(if (extraName == "healthconnect_sleep") "sleep" else "vitals",result)
+            return
+        }
+        val target = Intent(this, WebViewLauncherActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(extraName, result.toString())
         }
         startActivity(target)
         finish()

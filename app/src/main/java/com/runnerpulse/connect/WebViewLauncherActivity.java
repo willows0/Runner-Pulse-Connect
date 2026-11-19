@@ -62,6 +62,9 @@ public final class WebViewLauncherActivity extends Activity {
     private long lastHealthStatusAt = 0L;
     private long lastHealthStepsAt = 0L;
     private long lastHealthSyncAt = 0L;
+    private long lastHealthSleepAt = 0L;
+    private long lastHealthVitalsAt = 0L;
+    private long lastHealthHomeAt = 0L;
     private boolean allowHealthRequest(String kind) {
         long now = SystemClock.elapsedRealtime();
         if ("status".equals(kind)) {
@@ -70,6 +73,15 @@ public final class WebViewLauncherActivity extends Activity {
         } else if ("steps".equals(kind)) {
             if (lastHealthStepsAt != 0L && now - lastHealthStepsAt < 30000L) return false;
             lastHealthStepsAt = now;
+        } else if ("home".equals(kind)) {
+            if (lastHealthHomeAt != 0L && now - lastHealthHomeAt < 60000L) return false;
+            lastHealthHomeAt = now;
+        } else if ("sleep".equals(kind)) {
+            if (lastHealthSleepAt != 0L && now - lastHealthSleepAt < 120000L) return false;
+            lastHealthSleepAt = now;
+        } else if ("vitals".equals(kind)) {
+            if (lastHealthVitalsAt != 0L && now - lastHealthVitalsAt < 120000L) return false;
+            lastHealthVitalsAt = now;
         } else if ("sync".equals(kind)) {
             if (lastHealthSyncAt != 0L && now - lastHealthSyncAt < 60000L) return false;
             lastHealthSyncAt = now;
@@ -205,6 +217,36 @@ public final class WebViewLauncherActivity extends Activity {
                     startActivity(i);
                 });
             }
+            @JavascriptInterface public void requestHomeHealth() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    if (!allowHealthRequest("home")) return;
+                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
+                    i.setAction(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse("runnerpulseconnect://home"));
+                    startActivity(i);
+                });
+            }
+            @JavascriptInterface public void requestSleep() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    if (!allowHealthRequest("sleep")) return;
+                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
+                    i.setAction(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse("runnerpulseconnect://sleep"));
+                    startActivity(i);
+                });
+            }
+            @JavascriptInterface public void requestVitals() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    if (!allowHealthRequest("vitals")) return;
+                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
+                    i.setAction(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse("runnerpulseconnect://vitals"));
+                    startActivity(i);
+                });
+            }
             @JavascriptInterface public void requestExerciseSync() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
@@ -325,6 +367,9 @@ public final class WebViewLauncherActivity extends Activity {
         receiveHealthCallback(intent);
         receiveHealthSync(intent);
         receiveHealthSteps(intent);
+        receiveHealthSleep(intent);
+        receiveHealthVitals(intent);
+        receiveHealthHome(intent);
         receiveNotificationTap(intent);
     }
     @Override protected void onResume() {
@@ -333,6 +378,9 @@ public final class WebViewLauncherActivity extends Activity {
         receiveHealthCallback(getIntent());
         receiveHealthSync(getIntent());
         receiveHealthSteps(getIntent());
+        receiveHealthSleep(getIntent());
+        receiveHealthVitals(getIntent());
+        receiveHealthHome(getIntent());
         receiveNotificationTap(getIntent());
     }
     private void receiveNotificationTap(Intent intent) {
@@ -359,6 +407,38 @@ public final class WebViewLauncherActivity extends Activity {
         try { new JSONObject(payload); } catch (Exception e) { return; }
         String js = "window.dispatchEvent(new CustomEvent('runnerpulse:health-steps',{detail:" + payload + "}))";
         web.post(() -> web.evaluateJavascript(js, null));
+    }
+    private void receiveHealthHome(Intent intent) {
+        if (web == null || intent == null || !intent.hasExtra("healthconnect_home")) return;
+        String payload=intent.getStringExtra("healthconnect_home");
+        intent.removeExtra("healthconnect_home");
+        if (payload == null) return;
+        try {
+            JSONObject parts=new JSONObject(payload);
+            StringBuilder js=new StringBuilder();
+            for (String part: new String[]{"steps","sleep","vitals"}) {
+                JSONObject data=parts.optJSONObject(part);
+                if (data == null) continue;
+                String event=part.equals("steps")?"runnerpulse:health-steps":part.equals("sleep")?"runnerpulse:health-sleep":"runnerpulse:health-vitals";
+                js.append("window.dispatchEvent(new CustomEvent(").append(JSONObject.quote(event)).append(",{detail:").append(data.toString()).append("}));");
+            }
+            if (js.length()>0) web.post(() -> web.evaluateJavascript(js.toString(),null));
+        } catch (Exception ignored) { }
+    }
+    private void receiveHealthSleep(Intent intent) {
+        emitNativeResult(intent,"healthconnect_sleep","runnerpulse:health-sleep");
+    }
+    private void receiveHealthVitals(Intent intent) {
+        emitNativeResult(intent,"healthconnect_vitals","runnerpulse:health-vitals");
+    }
+    private void emitNativeResult(Intent intent,String extra,String event) {
+        if (web == null || intent == null || !intent.hasExtra(extra)) return;
+        String payload=intent.getStringExtra(extra);
+        intent.removeExtra(extra);
+        if (payload == null) return;
+        try { new JSONObject(payload); } catch (Exception e) { return; }
+        String js="window.dispatchEvent(new CustomEvent(" + JSONObject.quote(event) + ",{detail:" + payload + "}))";
+        web.post(() -> web.evaluateJavascript(js,null));
     }
     private void receiveHealthSync(Intent intent) {
         if (web == null || intent == null || !intent.hasExtra("healthconnect_sync")) return;
