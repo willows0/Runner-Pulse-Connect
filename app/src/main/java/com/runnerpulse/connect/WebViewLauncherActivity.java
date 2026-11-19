@@ -207,6 +207,16 @@ public final class WebViewLauncherActivity extends Activity {
                     startActivity(i);
                 });
             }
+            @JavascriptInterface public void requestHealthRevocation() {
+                runOnUiThread(() -> {
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    if (!allowHealthRequest("revoke-auto")) return;
+                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
+                    i.setAction(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse("runnerpulseconnect://revoke-auto"));
+                    startActivity(i);
+                });
+            }
             @JavascriptInterface public void requestSteps() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;

@@ -112,12 +112,27 @@ class MainActivity : ComponentActivity() {
     private fun isAuthorizeLink(intent: Intent?): Boolean =
         intent?.action == Intent.ACTION_VIEW &&
         intent.data?.scheme == "runnerpulseconnect" &&
-        intent.data?.host in setOf("authorize", "revoke", "status", "sync", "steps", "sleep", "vitals", "home")
+        intent.data?.host in setOf("authorize", "revoke", "revoke-auto", "status", "sync", "steps", "sleep", "vitals", "home")
 
     // Health Connect manages grants persistently. Do not call revokeAllPermissions():
     // on some Android versions it may terminate this app's process.
     private var waitingForHealthSettings = false
     private var healthSettingsOpened = false
+
+    private fun revokeHealthPermissions() {
+        // Solo su richiesta esplicita dell'utente quando spegne HONOR.
+        // Android può aggiornare la schermata dei permessi solo al riavvio.
+        val health = client
+        if (health == null) { openHealthPermissionSettings(); return }
+        lifecycleScope.launch {
+            try {
+                health.permissionController.revokeAllPermissions()
+                returnToProfile()
+            } catch (_: Exception) {
+                openHealthPermissionSettings()
+            }
+        }
+    }
 
     private fun openHealthPermissionSettings() {
         try {
@@ -156,6 +171,7 @@ class MainActivity : ComponentActivity() {
     private fun handleHealthAction(intent: Intent?) {
         when (intent?.data?.host) {
             "revoke" -> openHealthPermissionSettings()
+            "revoke-auto" -> revokeHealthPermissions()
             "sync" -> syncExercises()
             "steps" -> syncSteps()
             "sleep" -> syncSleep()
@@ -433,6 +449,7 @@ class MainActivity : ComponentActivity() {
                         if (record != null) {
                             output.put("vo2max",record.vo2MillilitersPerMinuteKilogram)
                             output.put("vo2SourcePackage",record.metadata.dataOrigin.packageName)
+                            output.put("vo2ObservedAt",record.time.toEpochMilli())
                         }
                     } catch (_: Exception) { }
                 }
@@ -444,6 +461,7 @@ class MainActivity : ComponentActivity() {
                         if (record != null) {
                             output.put("restingHeartRate",record.beatsPerMinute)
                             output.put("heartSourcePackage",record.metadata.dataOrigin.packageName)
+                            output.put("heartObservedAt",record.time.toEpochMilli())
                         }
                     } catch (_: Exception) { }
                 }
