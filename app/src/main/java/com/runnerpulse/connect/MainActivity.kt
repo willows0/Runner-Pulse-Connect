@@ -120,18 +120,11 @@ class MainActivity : ComponentActivity() {
     private var healthSettingsOpened = false
 
     private fun revokeHealthPermissions() {
-        // Solo su richiesta esplicita dell'utente quando spegne HONOR.
-        // Android può aggiornare la schermata dei permessi solo al riavvio.
-        val health = client
-        if (health == null) { openHealthPermissionSettings(); return }
-        lifecycleScope.launch {
-            try {
-                health.permissionController.revokeAllPermissions()
-                returnToProfile()
-            } catch (_: Exception) {
-                openHealthPermissionSettings()
-            }
-        }
+        // Cambiare sorgente non deve revocare la libreria Health Connect in modo
+        // asincrono: su alcuni Honor la coroutine viene cancellata e la WebView
+        // riceve JobCancellationException. La revoca esplicita avviene nelle
+        // impostazioni di sistema, evitando di bloccare la riconnessione.
+        openHealthPermissionSettings()
     }
 
     private fun openHealthPermissionSettings() {
