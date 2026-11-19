@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.health.READ_SLEEP"/>
     <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
     <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
+    <uses-permission android:name="android.permission.health.READ_DISTANCE"/>
+    <uses-permission android:name="android.permission.health.READ_VO2_MAX"/>
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE"/>
     <queries><package android:name="com.google.android.apps.healthdata"/></queries>
     <application android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:label="Runner Pulse" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false">
         <service android:name=".RunnerPulseMessagingService" android:exported="false">
