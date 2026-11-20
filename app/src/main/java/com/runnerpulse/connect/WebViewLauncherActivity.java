@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.speech.RecognizerIntent;
+import java.util.ArrayList;
 import android.os.Build;
 import android.content.pm.PackageManager;
 import com.google.firebase.messaging.FirebaseMessaging;
@@ -39,11 +41,13 @@ import androidx.browser.customtabs.CustomTabsIntent;
 public final class WebViewLauncherActivity extends Activity {
     private static final String HOME = "https://runner-pulse-web.onrender.com/";
     private static final int FILE_CHOOSER_REQUEST = 8021;
+    private static final int SPEECH_INPUT_REQUEST = 8023;
     private ValueCallback<Uri[]> fileChooserCallback;
     private WebView web;
     private ProgressBar progress;
     private TextView error;
     private String pendingState;
+    private String pendingCalendarResult;
     private FrameLayout splash;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private int splashChecks;
@@ -95,6 +99,30 @@ public final class WebViewLauncherActivity extends Activity {
         String js = "window.dispatchEvent(new CustomEvent('runnerpulse:native-push-token',{detail:{token:" + JSONObject.quote(token == null ? "" : token) + ",error:" + JSONObject.quote(error == null ? "" : error) + "}}))";
         web.post(() -> web.evaluateJavascript(js, null));
     }
+    // Esternalizza la dettatura al riconoscitore vocale Android: nessun audio
+    // viene letto dalla WebView, il telefono restituisce soltanto il testo.
+    private void emitSpeechResult(String text, String error, boolean cancelled) {
+        if (web == null) return;
+        String js = "window.dispatchEvent(new CustomEvent('runnerpulse:native-speech-result',{detail:{text:"
+            + JSONObject.quote(text == null ? "" : text) + ",error:"
+            + JSONObject.quote(error == null ? "" : error) + ",cancelled:"
+            + (cancelled ? "true" : "false") + "}}));";
+        web.post(() -> web.evaluateJavascript(js, null));
+    }
+    private void startSpeechInput() {
+        try {
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "it-IT");
+            intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Detta il messaggio per Runner Pulse");
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+            startActivityForResult(intent, SPEECH_INPUT_REQUEST);
+        } catch (android.content.ActivityNotFoundException e) {
+            emitSpeechResult(null, "Riconoscimento vocale Android non disponibile. Attiva la dettatura Google o usa il microfono della tastiera.", false);
+        } catch (Exception e) {
+            emitSpeechResult(null, "Impossibile avviare la dettatura Android. Controlla le impostazioni vocali del telefono.", false);
+        }
+    }
     private void obtainPushToken(boolean promptPermission) {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
             if (!promptPermission) { emitPushToken(null, "Autorizzazione notifiche non concessa."); return; }
@@ -118,7 +146,7 @@ public final class WebViewLauncherActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        if (state != null) pendingState=state.getString("mobileLoginState");
+        if (state != null) {pendingState=state.getString("mobileLoginState");pendingCalendarResult=state.getString("calendarResult");}
         // Explicit insets: Android 15 enforces edge-to-edge even for target SDK 35.
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
@@ -175,6 +203,13 @@ public final class WebViewLauncherActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         settings.setUserAgentString(settings.getUserAgentString() + " RunnerPulseAndroidWebView/1");
         web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void requestSpeechInput() {
+                runOnUiThread(() -> {
+                    // Consentito soltanto al sito Runner Pulse caricato via HTTPS.
+                    if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
+                    startSpeechInput();
+                });
+            }
             @JavascriptInterface public void requestPushToken() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
@@ -295,6 +330,21 @@ public final class WebViewLauncherActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String scheme = uri.getScheme();
+                if ("runnerpulsecalendar".equalsIgnoreCase(scheme) && "start".equalsIgnoreCase(uri.getHost())) {
+                    String target = uri.getQueryParameter("url");
+                    if (target == null) return true;
+                    try {
+                        Uri browserUrl=Uri.parse(target);
+                        // Accettiamo soltanto l'URL di autorizzazione Google creato dal nostro server.
+                        if (!"https".equalsIgnoreCase(browserUrl.getScheme()) ||
+                            !"accounts.google.com".equalsIgnoreCase(browserUrl.getHost()) ||
+                            !"/o/oauth2/v2/auth".equals(browserUrl.getPath()) ||
+                            browserUrl.getQueryParameter("state") == null) return true;
+                        try { new CustomTabsIntent.Builder().build().launchUrl(WebViewLauncherActivity.this, browserUrl); }
+                        catch(Exception e){ startActivity(new Intent(Intent.ACTION_VIEW,browserUrl)); }
+                    } catch(Exception ignored) { }
+                    return true;
+                }
                 if ("runnerpulseauth".equalsIgnoreCase(scheme) && "start".equalsIgnoreCase(uri.getHost())) {
                     String state = uri.getQueryParameter("state");
                     if (state != null && state.matches("[A-Za-z0-9_-]{32,128}")) {
@@ -345,7 +395,7 @@ public final class WebViewLauncherActivity extends Activity {
                         }
                     }, 1200);
                 }
-                if (url != null && url.startsWith(HOME)) checkAppReady();
+                if (url != null && url.startsWith(HOME)) { checkAppReady(); deliverCalendarResult(); }
             }
             @Override public void onReceivedError(WebView view, android.webkit.WebResourceRequest req, android.webkit.WebResourceError err) {
                 if (req.isForMainFrame()) showError("Impossibile caricare Runner Pulse. Controlla la connessione e riapri l'app.");
@@ -356,6 +406,19 @@ public final class WebViewLauncherActivity extends Activity {
     }
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == SPEECH_INPUT_REQUEST) {
+            if (resultCode == RESULT_OK && data != null) {
+                ArrayList<String> candidates = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                if (candidates != null && !candidates.isEmpty() && candidates.get(0) != null && !candidates.get(0).trim().isEmpty()) {
+                    emitSpeechResult(candidates.get(0), null, false);
+                } else {
+                    emitSpeechResult(null, "Nessuna parola riconosciuta. Riprova.", false);
+                }
+            } else {
+                emitSpeechResult(null, null, true);
+            }
+            return;
+        }
         if (requestCode != FILE_CHOOSER_REQUEST) return;
         ValueCallback<Uri[]> callback = fileChooserCallback;
         fileChooserCallback = null;
@@ -374,6 +437,7 @@ public final class WebViewLauncherActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         receiveLoginCallback(intent);
+        receiveCalendarCallback(intent);
         receiveHealthCallback(intent);
         receiveHealthSync(intent);
         receiveHealthSteps(intent);
@@ -385,6 +449,7 @@ public final class WebViewLauncherActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         receiveLoginCallback(getIntent());
+        receiveCalendarCallback(getIntent());
         receiveHealthCallback(getIntent());
         receiveHealthSync(getIntent());
         receiveHealthSteps(getIntent());
@@ -458,6 +523,29 @@ public final class WebViewLauncherActivity extends Activity {
         String js = "window.dispatchEvent(new CustomEvent('runnerpulse:health-sync',{detail:" + payload + "}))";
         web.post(() -> web.evaluateJavascript(js, null));
     }
+    private void receiveCalendarCallback(Intent intent) {
+        if (web == null || intent == null || intent.getData() == null) return;
+        Uri uri=intent.getData();
+        if (!"runnerpulsecalendar".equalsIgnoreCase(uri.getScheme()) ||
+            !"callback".equalsIgnoreCase(uri.getHost())) return;
+        String result=uri.getQueryParameter("result");
+        // Non sono accettati codici OAuth o token nel deep link Android.
+        if (result == null || !result.matches("connected|invalid_client|invalid_grant|callback_error|missing_refresh|token_missing|consent_denied|missing_code|expired_state|state_storage|invalid_state")) return;
+        pendingCalendarResult=result;
+        intent.setData(null);
+        deliverCalendarResult();
+    }
+    private void deliverCalendarResult() {
+        if (web==null || pendingCalendarResult==null) return;
+        final String value=pendingCalendarResult;
+        web.evaluateJavascript("Boolean(window.rpActivatePage && document.getElementById('rp-calendar-status'))", ready -> {
+            if (!"true".equals(ready)) return; // onPageFinished consegnerà il risultato quando la pagina è pronta.
+            if (!value.equals(pendingCalendarResult)) return;
+            pendingCalendarResult=null;
+            String js="window.rpActivatePage('plan');window.dispatchEvent(new CustomEvent('runnerpulse:calendar-callback',{detail:{result:"+JSONObject.quote(value)+"}}));";
+            web.evaluateJavascript(js,null);
+        });
+    }
     private void receiveLoginCallback(Intent intent) {
         if (web == null || intent == null || intent.getData() == null) return;
         Uri uri=intent.getData();
@@ -478,7 +566,7 @@ public final class WebViewLauncherActivity extends Activity {
         });
     }
     private void showError(String message) { dismissSplash(); progress.setVisibility(View.GONE); error.setText(message); error.setVisibility(View.VISIBLE); }
-    @Override protected void onSaveInstanceState(Bundle out) { web.saveState(out); out.putString("mobileLoginState",pendingState); super.onSaveInstanceState(out); }
+    @Override protected void onSaveInstanceState(Bundle out) { web.saveState(out); out.putString("mobileLoginState",pendingState);out.putString("calendarResult",pendingCalendarResult); super.onSaveInstanceState(out); }
     @Override public void onBackPressed() {
         // A second Back press always exits, even if the web app has accumulated
         // a long SPA navigation history or a modal has trapped navigation.
