@@ -69,6 +69,37 @@ public final class WebViewLauncherActivity extends Activity {
     private long lastHealthSleepAt = 0L;
     private long lastHealthVitalsAt = 0L;
     private long lastHealthHomeAt = 0L;
+    // Only one native Health Connect activity at a time. Without this queue,
+    // concurrent Home / authorization / exercise requests can clear an earlier
+    // activity and cancel its lifecycleScope while it is still reading records.
+    private final NativeHealthRequestQueue healthQueue = new NativeHealthRequestQueue();
+    private boolean healthActivityInBackground = false;
+
+    private void requestNativeHealth(String action) {
+        if (!allowHealthRequest(action)) return;
+        String next = healthQueue.enqueue(action);
+        if (next != null) launchNativeHealth(next);
+    }
+
+    private void launchNativeHealth(String action) {
+        try {
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.setAction(Intent.ACTION_VIEW);
+            intent.setData(Uri.parse("runnerpulseconnect://" + action));
+            startActivity(intent);
+        } catch (Exception error) {
+            android.util.Log.w("RunnerPulseHealth", "Impossibile avviare la lettura: " + action, error);
+            String next = healthQueue.abort(action);
+            if (next != null) handler.post(() -> launchNativeHealth(next));
+        }
+    }
+
+    private void finishNativeHealth(String resultType) {
+        String next = healthQueue.complete(resultType);
+        // Return control to the WebView before starting another transparent activity.
+        if (next != null) handler.postDelayed(() -> launchNativeHealth(next), 350L);
+    }
+
     private boolean allowHealthRequest(String kind) {
         long now = SystemClock.elapsedRealtime();
         if ("status".equals(kind)) {
@@ -225,81 +256,49 @@ public final class WebViewLauncherActivity extends Activity {
             @JavascriptInterface public void requestPermissionStatus() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
-                    if (!allowHealthRequest("status")) return;
-                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
-                    i.setAction(Intent.ACTION_VIEW);
-                    i.setData(Uri.parse("runnerpulseconnect://status"));
-                    startActivity(i);
+                    requestNativeHealth("status");
                 });
             }
             @JavascriptInterface public void requestHealthAuthorization() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
-                    if (!allowHealthRequest("authorize")) return;
-                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
-                    i.setAction(Intent.ACTION_VIEW);
-                    i.setData(Uri.parse("runnerpulseconnect://authorize"));
-                    startActivity(i);
+                    requestNativeHealth("authorize");
                 });
             }
             @JavascriptInterface public void requestHealthRevocation() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
-                    if (!allowHealthRequest("revoke-auto")) return;
-                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
-                    i.setAction(Intent.ACTION_VIEW);
-                    i.setData(Uri.parse("runnerpulseconnect://revoke-auto"));
-                    startActivity(i);
+                    requestNativeHealth("revoke-auto");
                 });
             }
             @JavascriptInterface public void requestSteps() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
-                    if (!allowHealthRequest("steps")) return;
-                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
-                    i.setAction(Intent.ACTION_VIEW);
-                    i.setData(Uri.parse("runnerpulseconnect://steps"));
-                    startActivity(i);
+                    requestNativeHealth("steps");
                 });
             }
             @JavascriptInterface public void requestHomeHealth() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
-                    if (!allowHealthRequest("home")) return;
-                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
-                    i.setAction(Intent.ACTION_VIEW);
-                    i.setData(Uri.parse("runnerpulseconnect://home"));
-                    startActivity(i);
+                    requestNativeHealth("home");
                 });
             }
             @JavascriptInterface public void requestSleep() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
-                    if (!allowHealthRequest("sleep")) return;
-                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
-                    i.setAction(Intent.ACTION_VIEW);
-                    i.setData(Uri.parse("runnerpulseconnect://sleep"));
-                    startActivity(i);
+                    requestNativeHealth("sleep");
                 });
             }
             @JavascriptInterface public void requestVitals() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
-                    if (!allowHealthRequest("vitals")) return;
-                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
-                    i.setAction(Intent.ACTION_VIEW);
-                    i.setData(Uri.parse("runnerpulseconnect://vitals"));
-                    startActivity(i);
+                    requestNativeHealth("vitals");
                 });
             }
             @JavascriptInterface public void requestExerciseSync() {
                 runOnUiThread(() -> {
                     if (web == null || web.getUrl() == null || !web.getUrl().startsWith(HOME)) return;
-                    if (!allowHealthRequest("sync")) return;
-                    Intent i = new Intent(WebViewLauncherActivity.this, MainActivity.class);
-                    i.setAction(Intent.ACTION_VIEW);
-                    i.setData(Uri.parse("runnerpulseconnect://sync"));
-                    startActivity(i);
+                    requestNativeHealth("sync");
                 });
             }
         }, "RunnerPulseHealthNative");
@@ -364,12 +363,7 @@ public final class WebViewLauncherActivity extends Activity {
                             String hostAction = uri.getHost();
                             if ("revoke".equalsIgnoreCase(hostAction) || "status".equalsIgnoreCase(hostAction) || "sync".equalsIgnoreCase(hostAction) || "steps".equalsIgnoreCase(hostAction)) action = hostAction;
                         }
-                        if (("status".equals(action) || "steps".equals(action) || "sync".equals(action))
-                                && !allowHealthRequest(action)) return true;
-                        Intent health = new Intent(WebViewLauncherActivity.this, MainActivity.class);
-                        health.setAction(Intent.ACTION_VIEW);
-                        health.setData(Uri.parse("runnerpulseconnect://" + action));
-                        startActivity(health);
+                        requestNativeHealth(action);
                     } catch (Exception e) {
                         android.widget.Toast.makeText(WebViewLauncherActivity.this,
                             "Impossibile aprire Health Connect: " + e.getClass().getSimpleName(),
@@ -446,6 +440,12 @@ public final class WebViewLauncherActivity extends Activity {
         receiveHealthHome(intent);
         receiveNotificationTap(intent);
     }
+    @Override protected void onPause() {
+        // Mark only pauses caused while a Health Connect request is active.
+        if (healthQueue.current() != null) healthActivityInBackground = true;
+        super.onPause();
+    }
+
     @Override protected void onResume() {
         super.onResume();
         receiveLoginCallback(getIntent());
@@ -457,6 +457,22 @@ public final class WebViewLauncherActivity extends Activity {
         receiveHealthVitals(getIntent());
         receiveHealthHome(getIntent());
         receiveNotificationTap(getIntent());
+        if (healthActivityInBackground) {
+            healthActivityInBackground = false;
+            // Android may bring the WebView back without a callback when the
+            // transparent native activity is dismissed. Recover the queue only
+            // when this WebView is actually foreground and no result arrived.
+            final String awaiting = healthQueue.current();
+            if (awaiting != null) handler.postDelayed(() -> {
+                if (!awaiting.equals(healthQueue.current()) || !hasWindowFocus()) return;
+                android.util.Log.w("RunnerPulseHealth", "Lettura interrotta prima del risultato: " + awaiting);
+                if ("sync".equals(awaiting) && web != null) {
+                    web.evaluateJavascript("window.dispatchEvent(new CustomEvent('runnerpulse:health-sync',{detail:{error:'Lettura interrotta. Riprova dal Profilo.'}}))", null);
+                }
+                String next = healthQueue.abort(awaiting);
+                if (next != null) handler.postDelayed(() -> launchNativeHealth(next), 350L);
+            }, 1500L);
+        }
     }
     private void receiveNotificationTap(Intent intent) {
         if (web == null || intent == null || !intent.hasExtra("runnerpulse_notification_path")) return;
@@ -473,6 +489,7 @@ public final class WebViewLauncherActivity extends Activity {
         String js = "window.dispatchEvent(new CustomEvent('runnerpulse:health-permission-status',{detail:{status:"
             + JSONObject.quote(result) + "}}))";
         web.post(() -> web.evaluateJavascript(js, null));
+        finishNativeHealth("permission");
     }
     private void receiveHealthSteps(Intent intent) {
         if (web == null || intent == null || !intent.hasExtra("healthconnect_steps")) return;
@@ -482,6 +499,7 @@ public final class WebViewLauncherActivity extends Activity {
         try { new JSONObject(payload); } catch (Exception e) { return; }
         String js = "window.dispatchEvent(new CustomEvent('runnerpulse:health-steps',{detail:" + payload + "}))";
         web.post(() -> web.evaluateJavascript(js, null));
+        finishNativeHealth("steps");
     }
     private void receiveHealthHome(Intent intent) {
         if (web == null || intent == null || !intent.hasExtra("healthconnect_home")) return;
@@ -498,6 +516,7 @@ public final class WebViewLauncherActivity extends Activity {
                 js.append("window.dispatchEvent(new CustomEvent(").append(JSONObject.quote(event)).append(",{detail:").append(data.toString()).append("}));");
             }
             if (js.length()>0) web.post(() -> web.evaluateJavascript(js.toString(),null));
+        finishNativeHealth("home");
         } catch (Exception ignored) { }
     }
     private void receiveHealthSleep(Intent intent) {
@@ -514,6 +533,7 @@ public final class WebViewLauncherActivity extends Activity {
         try { new JSONObject(payload); } catch (Exception e) { return; }
         String js="window.dispatchEvent(new CustomEvent(" + JSONObject.quote(event) + ",{detail:" + payload + "}))";
         web.post(() -> web.evaluateJavascript(js,null));
+        finishNativeHealth("healthconnect_sleep".equals(extra) ? "sleep" : "vitals");
     }
     private void receiveHealthSync(Intent intent) {
         if (web == null || intent == null || !intent.hasExtra("healthconnect_sync")) return;
@@ -522,6 +542,7 @@ public final class WebViewLauncherActivity extends Activity {
         if (payload == null) return;
         String js = "window.dispatchEvent(new CustomEvent('runnerpulse:health-sync',{detail:" + payload + "}))";
         web.post(() -> web.evaluateJavascript(js, null));
+        finishNativeHealth("sync");
     }
     private void receiveCalendarCallback(Intent intent) {
         if (web == null || intent == null || intent.getData() == null) return;

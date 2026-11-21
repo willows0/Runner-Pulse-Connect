@@ -336,8 +336,15 @@ class MainActivity : ComponentActivity() {
                     pages++
                 } while (pageToken != null && pages < 3 && records.length() < 300)
                 sendExerciseResult(JSONObject().put("records", records))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // The activity was interrupted (for example by Android navigation).
+                // This is not an authorization failure and must not show an internal
+                // JobCancellationException to the user.
+                if (!isFinishing && !isDestroyed) {
+                    sendExerciseResult(JSONObject().put("error", "Lettura interrotta. Riprova dal Profilo."))
+                }
             } catch (e: Exception) {
-                sendExerciseResult(JSONObject().put("error", "Lettura Health Connect non riuscita: " + e.javaClass.simpleName))
+                sendExerciseResult(JSONObject().put("error", "Impossibile leggere gli allenamenti. Riprova tra poco."))
             }
         }
     }
