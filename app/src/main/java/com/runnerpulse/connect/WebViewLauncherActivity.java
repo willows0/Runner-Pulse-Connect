@@ -44,6 +44,7 @@ public final class WebViewLauncherActivity extends Activity {
     private static final int SPEECH_INPUT_REQUEST = 8023;
     private ValueCallback<Uri[]> fileChooserCallback;
     private WebView web;
+    private AppUpdateCheck appUpdateCheck;
     private ProgressBar progress;
     private TextView error;
     private String pendingState;
@@ -177,6 +178,7 @@ public final class WebViewLauncherActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        appUpdateCheck = new AppUpdateCheck(this, () -> splash == null && healthQueue.current() == null);
         if (state != null) {pendingState=state.getString("mobileLoginState");pendingCalendarResult=state.getString("calendarResult");}
         // Explicit insets: Android 15 enforces edge-to-edge even for target SDK 35.
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
@@ -443,11 +445,13 @@ public final class WebViewLauncherActivity extends Activity {
     @Override protected void onPause() {
         // Mark only pauses caused while a Health Connect request is active.
         if (healthQueue.current() != null) healthActivityInBackground = true;
+        if (appUpdateCheck != null) appUpdateCheck.pause();
         super.onPause();
     }
 
     @Override protected void onResume() {
         super.onResume();
+        if (appUpdateCheck != null) appUpdateCheck.resume();
         receiveLoginCallback(getIntent());
         receiveCalendarCallback(getIntent());
         receiveHealthCallback(getIntent());
@@ -473,6 +477,10 @@ public final class WebViewLauncherActivity extends Activity {
                 if (next != null) handler.postDelayed(() -> launchNativeHealth(next), 350L);
             }, 1500L);
         }
+    }
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && appUpdateCheck != null) appUpdateCheck.focus();
     }
     private void receiveNotificationTap(Intent intent) {
         if (web == null || intent == null || !intent.hasExtra("runnerpulse_notification_path")) return;
@@ -604,5 +612,5 @@ public final class WebViewLauncherActivity extends Activity {
             finish();
         }
     }
-    @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); if (fileChooserCallback != null) { fileChooserCallback.onReceiveValue(null); fileChooserCallback = null; } if (web != null) { web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { if (appUpdateCheck != null) appUpdateCheck.destroy(); handler.removeCallbacksAndMessages(null); if (fileChooserCallback != null) { fileChooserCallback.onReceiveValue(null); fileChooserCallback = null; } if (web != null) { web.destroy(); web = null; } super.onDestroy(); }
 }
